@@ -1,0 +1,39 @@
+# Rust
+justtalk-core/target/
+justtalk-signaling/target/
+target/
+
+# Flutter
+justtalk-flutter/build/
+justtalk-flutter/.dart_tool/
+justtalk-flutter/.flutter-plugins*
+justtalk-flutter/android/.gradle/
+justtalk-flutter/android/app/build/
+justtalk-flutter/android/build/
+justtalk-flutter/android/local.properties
+justtalk-flutter/ios/.symlinks/
+justtalk-flutter/ios/Pods/
+justtalk-flutter/ios/Podfile.lock
+justtalk-flutter/macos/Pods/
+justtalk-flutter/macos/Podfile.lock
+justtalk-flutter/windows/flutter/ephemeral/
+justtalk-flutter/windows/flutter/generated_plugin_registrant*
+justtalk-flutter/linux/flutter/ephemeral/
+justtalk-flutter/linux/flutter/generated_plugin_registrant*
+justtalk-flutter/pubspec.lock
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local scripts
+claude-run.sh
+
+# Claude
+.claude/settings.local.json
+.claude/worktrees/
