@@ -6,6 +6,22 @@ import '../services/p2p_service.dart';
 import '../services/storage_service.dart';
 import 'pairing_code.dart';
 
+/// 替换 URL 中的 localhost/127.0.0.1 为实际 LAN IP，使其他设备可访问
+Future<String> _resolveLanUrl(String url) async {
+  if (!url.contains('localhost') && !url.contains('127.0.0.1')) return url;
+  try {
+    final interfaces = await NetworkInterface.list();
+    for (final iface in interfaces) {
+      for (final addr in iface.addresses) {
+        if (addr.type == InternetAddressType.IPv4 && !addr.address.startsWith('127.')) {
+          return url.replaceAll('localhost', addr.address).replaceAll('127.0.0.1', addr.address);
+        }
+      }
+    }
+  } catch (_) {}
+  return url;
+}
+
 class ChatMessage {
   final String id;
   final String senderId;
@@ -98,8 +114,13 @@ class ChatState extends ChangeNotifier {
 
   // ── Connection state ──
   final Map<String, bool> _peerConnectionStates = {};
+  final Map<String, ConnectionPhase> _peerPhases = {};
   bool _signalingConnected = false;
+  bool _signalingConnecting = false;
   String? _lastError;
+
+  /// 当有人扫码配对时回调——UI 层设置此回调以感知配对事件
+  void Function(String peerId, String displayName)? onPairedFromQr;
 
   // ── P2P Service ──
   late final P2pService _p2pService;
@@ -114,7 +135,9 @@ class ChatState extends ChangeNotifier {
     _p2pService = P2pService();
     _p2pService.onDataReceived = _onPeerMessage;
     _p2pService.onConnectionStateChanged = _onConnectionChanged;
+    _p2pService.onConnectionPhase = _onPhaseChanged;
     _p2pService.onError = _onP2pError;
+    _p2pService.onPairConnect = _onPairConnect;
     _loadPersisted();
   }
 
@@ -175,9 +198,12 @@ class ChatState extends ChangeNotifier {
   List<Contact> get contacts => List.unmodifiable(_contacts);
   String get activeContactId => _activeContactId;
   bool get signalingConnected => _signalingConnected;
+  bool get signalingConnecting => _signalingConnecting;
   String? get lastError => _lastError;
 
   bool isPeerConnected(String peerId) => _peerConnectionStates[peerId] ?? false;
+  ConnectionPhase getPeerPhase(String peerId) =>
+      _peerPhases[peerId] ?? ConnectionPhase.idle;
 
   String? get pendingAnswerCode => _pendingAnswerCode;
 
@@ -276,6 +302,7 @@ class ChatState extends ChangeNotifier {
   void _onConnectionChanged(String peerId, bool connected) {
     if (peerId == '__signaling__') {
       _signalingConnected = connected;
+      _signalingConnecting = false;
     } else {
       _peerConnectionStates[peerId] = connected;
       // Update contact online status.
@@ -290,9 +317,24 @@ class ChatState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// P2pService 报告的连接阶段变化
+  void _onPhaseChanged(String peerId, ConnectionPhase phase) {
+    _peerPhases[peerId] = phase;
+    notifyListeners();
+  }
+
   void _onP2pError(String error) {
     _lastError = error;
     notifyListeners();
+  }
+
+  /// 被扫码方收到配对请求：自动创建联系人 + 通知 UI
+  void _onPairConnect(String peerId, String displayName) {
+    if (_contacts.any((c) => c.peerId == peerId)) return;
+    addContact(Contact(peerId: peerId, displayName: displayName, online: false));
+    setActiveContact(peerId);
+    // 通知 UI 层：有人扫码配对，应关闭 QR 弹窗并导航到聊天页
+    onPairedFromQr?.call(peerId, displayName);
   }
 
   /// Send a message: store locally + send via P2P.
@@ -314,17 +356,22 @@ class ChatState extends ChangeNotifier {
 
   /// Connect to the signaling server.
   Future<void> connectToSignaling() async {
+    _signalingConnecting = true;
+    notifyListeners();
     try {
       await _p2pService.connectSignaling(_signalingServer, _myPeerId, '');
       _lastError = null;
     } catch (e) {
       _lastError = 'Failed to connect to signaling server: $e';
-      notifyListeners();
     }
+    _signalingConnecting = false;
+    notifyListeners();
   }
 
   /// Connect to a peer via signaling server.
   Future<void> connectToPeer(String peerId) async {
+    _lastError = null;
+    notifyListeners();
     try {
       await _p2pService.connect(peerId);
     } catch (e) {
@@ -339,35 +386,54 @@ class ChatState extends ChangeNotifier {
 
   /// Generate a short pairing token for QR code.
   /// The actual WebRTC negotiation happens via signaling server or STUN fallback.
-  PairingCode generatePairingCode() {
+  Future<PairingCode> generatePairingCode() async {
     final token = _uuid.v4().substring(0, 16);
+    // 信令未连时先尝试连接，确保 QR 中始终嵌入有效信令地址
+    if (!_signalingConnected) {
+      await connectToSignaling();
+    }
+    // QR 码中的信令地址用 LAN IP，手机才能访问桌面
+    final lanUrl = await _resolveLanUrl(_signalingServer);
     final code = PairingCode(
       token: token,
+      peerId: _myPeerId,
       displayName: _displayName,
-      signalingServer: _signalingConnected ? _signalingServer : null,
+      signalingServer: lanUrl,
     );
+    // 告知信令服务器——B 扫码后会通过 connect_via_pair 路由到此 peerId
+    _p2pService.registerPairIntent(_myPeerId);
     return code;
   }
 
-  /// Accept a scanned pairing code: auto-create contact + initiate connection.
+  /// Accept a scanned pairing code: auto-create contact + connect to target signaling server + initiate connection.
   Future<void> acceptPairingCode(PairingCode code) async {
-    final peerId = 'pair_${code.token}';
+    final peerId = code.peerId;
+    _lastError = null;
 
     // Create contact with the remote user's name immediately.
     addContact(Contact(peerId: peerId, displayName: code.displayName, online: false));
     setActiveContact(peerId);
 
-    // If both are on same signaling server, connect via signaling.
-    if (_signalingConnected && code.signalingServer == _signalingServer) {
-      _pendingManualPeerId = peerId;
-      await _p2pService.connectViaPairing(peerId, remoteName: code.displayName);
-      _lastError = null;
-      notifyListeners();
-      return;
+    // 确定目标信令地址：优先用 QR 中嵌入的，否则兜底解析本地信令地址为 LAN IP
+    final targetServer = (code.signalingServer != null && code.signalingServer!.isNotEmpty)
+        ? code.signalingServer!
+        : await _resolveLanUrl(_signalingServer);
+
+    if (!_signalingConnected || _signalingServer != targetServer) {
+      setSignalingServer(targetServer);
+      try {
+        await connectToSignaling();
+        // 等一小段时间让 peer_online 等消息到达
+        await Future.delayed(const Duration(milliseconds: 300));
+      } catch (e) {
+        _lastError = '信令服务器连接失败: $e';
+        notifyListeners();
+        return;
+      }
     }
 
-    // Fallback: STUN-only direct connection.
     _pendingManualPeerId = peerId;
+    notifyListeners();
     await _p2pService.connectViaPairing(peerId, remoteName: code.displayName);
     _lastError = null;
     notifyListeners();

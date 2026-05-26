@@ -25,7 +25,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
     if (_detected) return;
     for (final barcode in capture.barcodes) {
       final code = barcode.rawValue;
-      if (code != null && code.startsWith('JTC1:')) {
+      if (code != null && (code.startsWith('JTC1:') || code.startsWith('JTC2:'))) {
         _detected = true;
         Navigator.pop(context, code);
         return;
@@ -56,7 +56,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
               height: 250,
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.white, width: 2),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.zero,
               ),
               child: const Column(
                 mainAxisAlignment: MainAxisAlignment.center,

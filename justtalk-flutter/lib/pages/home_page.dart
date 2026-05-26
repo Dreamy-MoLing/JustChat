@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import '../main.dart';
 import '../models/chat_state.dart';
 import '../models/notification_state.dart';
+import '../models/pairing_code.dart';
 import 'chat_page.dart';
 import 'info_page.dart';
 import 'notifications_page.dart';
@@ -47,7 +49,7 @@ class _HomePageState extends State<HomePage> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.zero,
       ),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(
@@ -92,19 +94,90 @@ class _HomePageState extends State<HomePage> {
 
   void _showMyQrCode() async {
     final state = context.read<ChatState>();
-    // Generate JTC2 short pairing token for QR code.
-    final pairingCode = state.generatePairingCode();
+
+    // 惰性预连接：信令未连时先连接再展示 QR
+    if (!state.signalingConnected) {
+      // 弹 loading dialog
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+      try {
+        await state.connectToSignaling().timeout(
+          const Duration(seconds: 3),
+        );
+      } on TimeoutException {
+        if (mounted) {
+          Navigator.pop(context); // 关 loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('信令服务器连接超时，请检查网络后重试')),
+          );
+        }
+        return;
+      } catch (_) {
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('信令服务器连接失败')),
+          );
+        }
+        return;
+      }
+      if (!state.signalingConnected) {
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('信令服务器连接失败')),
+          );
+        }
+        return;
+      }
+      if (mounted) Navigator.pop(context); // 关 loading
+    }
+
+    final pairingCode = await state.generatePairingCode();
+    if (!mounted) return;
     final qrData = pairingCode.encode();
     String? code = qrData;
+    bool paired = false;
+
+    // ── 设置配对回调：被扫码方感知有人扫码 ──
+    state.onPairedFromQr = (peerId, displayName) {
+      if (paired) return;
+      paired = true;
+      Navigator.pop(context); // 关闭 QR 弹窗
+      // 提示用户
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$displayName 正在连接...'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      // 导航到聊天页
+      final width = MediaQuery.of(context).size.width;
+      if (width < 600) {
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const ChatPage()));
+      }
+    };
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) {
+        builder: (ctx, dialogSetState) {
           return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: const Text('我的二维码'),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+            title: Row(
+              children: [
+                const Text('我的二维码'),
+                const Spacer(),
+                // ── 5 分钟倒计时 ──
+                _QrCountdown(createdAt: pairingCode.createdAt),
+              ],
+            ),
             content: SizedBox(
               width: double.maxFinite,
               child: Column(
@@ -115,7 +188,7 @@ class _HomePageState extends State<HomePage> {
                   Card(
                     color: JustChatApp.cream.withAlpha(80),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.zero,
                     ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -136,7 +209,7 @@ class _HomePageState extends State<HomePage> {
                   Card(
                     elevation: 2,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.zero,
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -187,7 +260,7 @@ class _HomePageState extends State<HomePage> {
                       SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          '新版轻量二维码，扫码立即添加好友。双方连接信令服务器后自动完成 P2P 连接。',
+                          '扫码立即添加好友。双方连接信令服务器后自动完成 P2P 连接。',
                           style: TextStyle(fontSize: 11, color: Colors.grey),
                         ),
                       ),
@@ -198,7 +271,10 @@ class _HomePageState extends State<HomePage> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(ctx),
+                onPressed: () {
+                  state.onPairedFromQr = null;
+                  Navigator.pop(ctx);
+                },
                 child: const Text('关闭'),
               ),
             ],
@@ -219,17 +295,24 @@ class _HomePageState extends State<HomePage> {
     );
     if (result != null && mounted) {
       final state = context.read<ChatState>();
-      await state.handleConnectionCode(result);
-      if (mounted && state.pendingAnswerCode != null) {
-        _showAnswerQrCode(state.pendingAnswerCode!);
-      } else if (mounted && result.startsWith('JTC2:')) {
-        // JTC2: contact auto-created, navigate to chat page directly.
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('好友已添加，正在连接...')),
-        );
-        if (mounted && state.activeContactId.isNotEmpty) {
-          Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const ChatPage()));
+      try {
+        await state.handleConnectionCode(result);
+        if (mounted && state.pendingAnswerCode != null) {
+          _showAnswerQrCode(state.pendingAnswerCode!);
+        } else if (mounted && result.startsWith('JTC2:')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('好友已添加，正在连接...')),
+          );
+          if (mounted && state.activeContactId.isNotEmpty) {
+            Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const ChatPage()));
+          }
+        }
+      } on PairingCodeExpiredException catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString()), backgroundColor: Colors.orange),
+          );
         }
       }
     }
@@ -243,7 +326,7 @@ class _HomePageState extends State<HomePage> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
         title: const Text('已连接！'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -258,7 +341,7 @@ class _HomePageState extends State<HomePage> {
             Card(
               elevation: 2,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.zero,
               ),
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -324,7 +407,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _shareConnectionCode() async {
     final state = context.read<ChatState>();
     try {
-      final code = state.generatePairingCode().encode();
+      final code = (await state.generatePairingCode()).encode();
       if (!mounted) return;
       await Share.share(code);
     } catch (e) {
@@ -350,7 +433,7 @@ class _HomePageState extends State<HomePage> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) {
           return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
             title: const Text('粘贴连接码'),
             content: SizedBox(
               width: double.maxFinite,
@@ -369,7 +452,7 @@ class _HomePageState extends State<HomePage> {
                         const SizedBox(height: 8),
                         Card(
                           elevation: 1,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
                           child: Padding(
                             padding: const EdgeInsets.all(12),
                             child: SelectableText(
@@ -480,6 +563,8 @@ class _HomePageState extends State<HomePage> {
                           Navigator.pop(ctx);
                         }
                       }
+                    } on PairingCodeExpiredException catch (e) {
+                      if (ctx.mounted) setState(() { error = e.toString(); loading = false; });
                     } catch (e) {
                       if (ctx.mounted) setState(() { error = '无效的连接码: $e'; loading = false; });
                     }
@@ -520,7 +605,7 @@ class _HomePageState extends State<HomePage> {
                   width: 48, height: 48,
                   decoration: BoxDecoration(
                     color: Colors.white.withAlpha(50),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.zero,
                   ),
                   child: const Icon(Icons.chat_rounded, color: Colors.white, size: 28),
                 ),
@@ -604,125 +689,245 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final isDesktop = MediaQuery.of(context).size.width >= 600;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('JustChat'),
-        leading: Builder(
-          builder: (ctx) => IconButton(
-            icon: const Icon(Icons.menu_rounded),
-            onPressed: () => Scaffold.of(ctx).openDrawer(),
-          ),
-        ),
-        actions: [
-          Consumer<NotificationState>(
-            builder: (_, ns, __) => Stack(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.notifications_outlined),
-                  onPressed: () => Navigator.push(context,
-                      MaterialPageRoute(builder: (_) => const NotificationsPage())),
+      appBar: isDesktop
+          ? null
+          : AppBar(
+              title: const Text('JustChat'),
+              leading: Builder(
+                builder: (ctx) => IconButton(
+                  icon: const Icon(Icons.menu_rounded),
+                  onPressed: () => Scaffold.of(ctx).openDrawer(),
                 ),
-                if (ns.unreadCount > 0)
-                  Positioned(
-                    right: 8, top: 8,
-                    child: Container(
-                      width: 18, height: 18,
-                      decoration: const BoxDecoration(
-                          color: Colors.red, shape: BoxShape.circle),
-                      child: Center(
-                        child: Text('${ns.unreadCount}',
-                            style: const TextStyle(color: Colors.white, fontSize: 10)),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
-      drawer: _buildDrawer(context),
-      body: Consumer<ChatState>(
-        builder: (context, state, _) {
-          if (state.contacts.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.chat_bubble_outline_rounded,
-                      size: 80, color: JustChatApp.teal.withAlpha(80)),
-                  const SizedBox(height: 16),
-                  Text('还没有联系人',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: JustChatApp.teal.withAlpha(150))),
-                  const SizedBox(height: 8),
-                  Text('点击右下角 + 连接第一个朋友',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey)),
-                ],
               ),
-            );
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.only(top: 8, bottom: 80),
-            itemCount: state.contacts.length,
-            itemBuilder: (context, index) {
-              final contact = state.contacts[index];
-              final msgs = state.getMessages(contact.peerId);
-              return Dismissible(
-                key: Key(contact.peerId),
-                direction: DismissDirection.endToStart,
-                confirmDismiss: (_) => showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('删除联系人'),
-                    content: Text('确定删除「${contact.displayName}」吗？聊天记录也会被清除。'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('取消'),
+              actions: [
+                Consumer<NotificationState>(
+                  builder: (_, ns, __) => Stack(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.notifications_outlined),
+                        onPressed: () => Navigator.push(context,
+                            MaterialPageRoute(
+                                builder: (_) => const NotificationsPage())),
                       ),
-                      TextButton(
-                        onPressed: () {
-                          state.removeContact(contact.peerId);
-                          Navigator.pop(ctx, true);
-                        },
-                        child: const Text('删除', style: TextStyle(color: Colors.red)),
-                      ),
+                      if (ns.unreadCount > 0)
+                        Positioned(
+                          right: 8, top: 8,
+                          child: Container(
+                            width: 18, height: 18,
+                            decoration: const BoxDecoration(
+                                color: Colors.red, shape: BoxShape.circle),
+                            child: Center(
+                              child: Text('${ns.unreadCount}',
+                                  style: const TextStyle(
+                                      color: Colors.white, fontSize: 10)),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                 ),
-                background: Container(
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.only(right: 20),
-                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.red,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Icon(Icons.delete_rounded, color: Colors.white),
-                ),
-                child: _ContactCard(
-                  contact: contact,
-                  lastMessage: msgs.isNotEmpty ? msgs.last.content : null,
-                  connected: state.isPeerConnected(contact.peerId),
-                  onTap: () {
-                    state.setActiveContact(contact.peerId);
-                    Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => const ChatPage()));
-                  },
-                ),
-              );
-            },
-          );
+                const SizedBox(width: 4),
+              ],
+            ),
+      drawer: isDesktop ? null : _buildDrawer(context),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth >= 600) {
+            return _buildDesktopLayout(context);
+          }
+          return _buildMobileLayout(context);
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showConnectionMenu,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('连接'),
-      ),
+      floatingActionButton: isDesktop
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _showConnectionMenu,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('连接'),
+            ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Responsive layouts
+  // ══════════════════════════════════════════════════════════════════════
+
+  Widget _buildDesktopLayout(BuildContext context) {
+    return Consumer<ChatState>(
+      builder: (context, state, _) {
+        return Row(
+          children: [
+            SizedBox(
+              width: 300,
+              child: Scaffold(
+                appBar: AppBar(
+                  title: const Text('联系人'),
+                  leading: PopupMenuButton<String>(
+                    icon: const Icon(Icons.menu_rounded),
+                    onSelected: (v) {
+                      switch (v) {
+                        case 'settings':
+                          Navigator.push(context,
+                              MaterialPageRoute(builder: (_) => const SettingsPage()));
+                          break;
+                        case 'info':
+                          Navigator.push(context,
+                              MaterialPageRoute(builder: (_) => const InfoPage()));
+                          break;
+                      }
+                    },
+                    itemBuilder: (ctx) => [
+                      const PopupMenuItem(value: 'settings', child: Text('设置')),
+                      const PopupMenuItem(value: 'info', child: Text('使用教程')),
+                    ],
+                  ),
+                  actions: [
+                    Consumer<NotificationState>(
+                      builder: (_, ns, __) => Stack(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.notifications_outlined),
+                            onPressed: () => Navigator.push(context,
+                                MaterialPageRoute(
+                                    builder: (_) => const NotificationsPage())),
+                          ),
+                          if (ns.unreadCount > 0)
+                            Positioned(
+                              right: 8, top: 8,
+                              child: Container(
+                                width: 18, height: 18,
+                                decoration: const BoxDecoration(
+                                    color: Colors.red, shape: BoxShape.circle),
+                                child: Center(
+                                  child: Text('${ns.unreadCount}',
+                                      style: const TextStyle(
+                                          color: Colors.white, fontSize: 10)),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                body: _buildContactList(context, state),
+                floatingActionButton: FloatingActionButton(
+                  onPressed: _showConnectionMenu,
+                  child: const Icon(Icons.add_rounded),
+                ),
+              ),
+            ),
+            const VerticalDivider(width: 1),
+            Expanded(
+              child: state.activeContactId.isNotEmpty
+                  ? ChatPage(embedded: true, key: ValueKey(state.activeContactId))
+                  : const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.chat_rounded,
+                              size: 64, color: Colors.grey),
+                          SizedBox(height: 12),
+                          Text('选择一个联系人开始聊天',
+                              style: TextStyle(color: Colors.grey, fontSize: 15)),
+                        ],
+                      ),
+                    ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildMobileLayout(BuildContext context) {
+    return Consumer<ChatState>(
+      builder: (context, state, _) {
+        if (state.contacts.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.chat_bubble_outline_rounded,
+                    size: 80, color: JustChatApp.teal.withAlpha(80)),
+                const SizedBox(height: 16),
+                Text('还没有联系人',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: JustChatApp.teal.withAlpha(150))),
+                const SizedBox(height: 8),
+                Text('点击右下角 + 连接第一个朋友',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.grey)),
+              ],
+            ),
+          );
+        }
+        return _buildContactList(context, state);
+      },
+    );
+  }
+
+  Widget _buildContactList(BuildContext context, ChatState state) {
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 8, bottom: 80),
+      itemCount: state.contacts.length,
+      itemBuilder: (context, index) {
+        final contact = state.contacts[index];
+        final msgs = state.getMessages(contact.peerId);
+        return Dismissible(
+          key: Key(contact.peerId),
+          direction: DismissDirection.endToStart,
+          confirmDismiss: (_) => showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('删除联系人'),
+              content: Text('确定删除「${contact.displayName}」吗？聊天记录也会被清除。'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    state.removeContact(contact.peerId);
+                    Navigator.pop(ctx, true);
+                  },
+                  child: const Text('删除', style: TextStyle(color: Colors.red)),
+                ),
+              ],
+            ),
+          ),
+          background: Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.only(right: 20),
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.red,
+              borderRadius: BorderRadius.zero,
+            ),
+            child: const Icon(Icons.delete_rounded, color: Colors.white),
+          ),
+          child: _ContactCard(
+            contact: contact,
+            lastMessage: msgs.isNotEmpty ? msgs.last.content : null,
+            connected: state.isPeerConnected(contact.peerId),
+            onTap: () {
+              state.setActiveContact(contact.peerId);
+              final width = MediaQuery.of(context).size.width;
+              if (width >= 600) {
+                // 桌面模式：直接切换右侧面板，无需导航
+                return;
+              }
+              Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const ChatPage()));
+            },
+          ),
+        );
+      },
     );
   }
 
@@ -731,7 +936,7 @@ class _HomePageState extends State<HomePage> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.zero,
       ),
       builder: (ctx) {
         final bottomPad = MediaQuery.of(ctx).padding.bottom;
@@ -747,7 +952,7 @@ class _HomePageState extends State<HomePage> {
                 width: 40, height: 4,
                 decoration: BoxDecoration(
                   color: Colors.grey.withAlpha(100),
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: BorderRadius.zero,
                 ),
               ),
             ),
@@ -761,7 +966,7 @@ class _HomePageState extends State<HomePage> {
                 width: 40, height: 40,
                 decoration: BoxDecoration(
                   color: JustChatApp.teal.withAlpha(20),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.zero,
                 ),
                 child: const Icon(Icons.camera_alt_rounded, color: JustChatApp.teal),
               ),
@@ -777,7 +982,7 @@ class _HomePageState extends State<HomePage> {
                 width: 40, height: 40,
                 decoration: BoxDecoration(
                   color: JustChatApp.teal.withAlpha(20),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.zero,
                 ),
                 child: const Icon(Icons.qr_code_rounded, color: JustChatApp.teal),
               ),
@@ -793,7 +998,7 @@ class _HomePageState extends State<HomePage> {
                 width: 40, height: 40,
                 decoration: BoxDecoration(
                   color: JustChatApp.teal.withAlpha(20),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.zero,
                 ),
                 child: const Icon(Icons.share_rounded, color: JustChatApp.teal),
               ),
@@ -809,7 +1014,7 @@ class _HomePageState extends State<HomePage> {
                 width: 40, height: 40,
                 decoration: BoxDecoration(
                   color: JustChatApp.teal.withAlpha(20),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.zero,
                 ),
                 child: const Icon(Icons.paste_rounded, color: JustChatApp.teal),
               ),
@@ -826,7 +1031,7 @@ class _HomePageState extends State<HomePage> {
                 width: 40, height: 40,
                 decoration: BoxDecoration(
                   color: JustChatApp.creamDark.withAlpha(100),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.zero,
                 ),
                 child: const Icon(Icons.person_add_rounded, color: JustChatApp.teal),
               ),
@@ -863,7 +1068,7 @@ class _ContactCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.zero,
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -874,7 +1079,7 @@ class _ContactCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                       colors: [JustChatApp.teal, JustChatApp.tealLight]),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.zero,
                 ),
                 child: Stack(
                   children: [
@@ -919,6 +1124,54 @@ class _ContactCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// QR 码 5 分钟倒计时指示器
+class _QrCountdown extends StatefulWidget {
+  final DateTime createdAt;
+  const _QrCountdown({required this.createdAt});
+
+  @override
+  State<_QrCountdown> createState() => _QrCountdownState();
+}
+
+class _QrCountdownState extends State<_QrCountdown> {
+  late int _remaining;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _remaining = PairingCode.expirySeconds -
+        DateTime.now().difference(widget.createdAt).inSeconds;
+    if (_remaining > 0) {
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        setState(() {
+          _remaining = PairingCode.expirySeconds -
+              DateTime.now().difference(widget.createdAt).inSeconds;
+        });
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final expired = _remaining <= 0;
+    return Text(
+      expired ? '已过期' : '${_remaining ~/ 60}:${(_remaining % 60).toString().padLeft(2, '0')}',
+      style: TextStyle(
+        fontSize: 12,
+        color: expired ? Colors.red : Colors.grey,
+        fontWeight: FontWeight.w600,
       ),
     );
   }

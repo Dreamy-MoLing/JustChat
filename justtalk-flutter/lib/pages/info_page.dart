@@ -44,7 +44,7 @@ class InfoPage extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: JustChatApp.cream,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.zero,
             ),
             child: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -95,7 +95,7 @@ class InfoPage extends StatelessWidget {
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                   colors: [JustChatApp.teal, JustChatApp.tealLight]),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.zero,
             ),
             child: Center(
               child: Text(num,
