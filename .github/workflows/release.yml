@@ -176,43 +176,88 @@ jobs:
           path: ${{ env.APP_DIR }}/artifacts/
           retention-days: 7
 
-  # Optional: signed iOS build (requires Apple Developer Program account)
-  # ios-signed:
-  #   name: iOS (signed IPA)
-  #   runs-on: macos-latest
-  #   if: ${{ secrets.APPLE_DEVELOPER_SIGNING_ENABLED == 'true' }}
-  #   defaults:
-  #     run:
-  #       working-directory: ${{ env.APP_DIR }}
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Setup Flutter
-  #       uses: subosito/flutter-action@v2
-  #       with:
-  #         flutter-version: ${{ env.FLUTTER_VERSION }}
-  #         channel: ${{ env.FLUTTER_CHANNEL }}
-  #         cache: true
-  #     - name: Get dependencies
-  #       run: flutter pub get
-  #     - name: Import signing certificate
-  #       run: |
-  #         echo "${{ secrets.IOS_DISTRIBUTION_CERT_B64 }}" | base64 --decode > /tmp/cert.p12
-  #         echo "${{ secrets.IOS_DISTRIBUTION_PROFILE_B64 }}" | base64 --decode > /tmp/profile.mobileprovision
-  #         security create-keychain -p temp temp.keychain
-  #         security import /tmp/cert.p12 -k ~/Library/Keychains/temp.keychain -P "${{ secrets.IOS_CERT_PASSWORD }}" -A
-  #         mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-  #         cp /tmp/profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
-  #     - name: Build IPA
-  #       run: flutter build ipa --release --export-method app-store
-  #     - name: Upload IPA
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: ios-signed
-  #         path: ${{ env.APP_DIR }}/build/ios/ipa/
+  ios-signed:
+    name: iOS (signed IPA)
+    runs-on: macos-latest
+    if: ${{ vars.IOS_SIGNING_ENABLED == 'true' }}
+    defaults:
+      run:
+        working-directory: ${{ env.APP_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.APP_DIR }}/.dart_tool
+          key: flutter-pub-macos-signed-${{ hashFiles(format('{0}/pubspec.lock', env.APP_DIR)) }}
+          restore-keys: |
+            flutter-pub-macos-signed-
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Configure Xcode signing settings
+        run: |
+          # Inject GitHub Variables into Xcode project
+          # IOS_TEAM_ID and IOS_BUNDLE_ID are GitHub Variables (set in repo settings)
+          if [ -n "${{ vars.IOS_TEAM_ID }}" ]; then
+            sed -i '' \
+              "s/DEVELOPMENT_TEAM = [^;]*;/DEVELOPMENT_TEAM = ${{ vars.IOS_TEAM_ID }};/g" \
+              ios/Runner.xcodeproj/project.pbxproj
+            echo "Set DEVELOPMENT_TEAM to ${{ vars.IOS_TEAM_ID }}"
+          fi
+          if [ -n "${{ vars.IOS_BUNDLE_ID }}" ]; then
+            sed -i '' \
+              "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = ${{ vars.IOS_BUNDLE_ID }};/g" \
+              ios/Runner.xcodeproj/project.pbxproj
+            echo "Set PRODUCT_BUNDLE_IDENTIFIER to ${{ vars.IOS_BUNDLE_ID }}"
+          fi
+
+      - name: Import Apple Distribution Certificate
+        run: |
+          echo "${{ secrets.IOS_CERT_P12_B64 }}" | base64 --decode > /tmp/cert.p12
+          security create-keychain -p temp temp.keychain
+          security unlock-keychain -p temp temp.keychain
+          security import /tmp/cert.p12 -k ~/Library/Keychains/temp.keychain \
+            -P "${{ secrets.IOS_CERT_PASSWORD }}" -T /usr/bin/codesign -A
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k temp temp.keychain
+          security list-keychain -d user -s temp.keychain
+
+      - name: Import Provisioning Profile
+        run: |
+          echo "${{ secrets.IOS_PROFILE_B64 }}" | base64 --decode > /tmp/profile.mobileprovision
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp /tmp/profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+
+      - name: Build IPA (App Store)
+        run: flutter build ipa --release --export-method app-store
+        env:
+          GCC_TREAT_WARNINGS_AS_ERRORS: "NO"
+
+      - name: Rename IPA
+        run: |
+          TAG="${{ github.ref_name }}"
+          cp build/ios/ipa/*.ipa "build/ios/ipa/JustChat-${TAG}-ios-signed.ipa"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-signed
+          path: ${{ env.APP_DIR }}/build/ios/ipa/JustChat-*.ipa
+          retention-days: 7
 
   release:
     name: Create Release
-    needs: [android, windows, ios]
+    needs: [android, windows, ios, ios-signed]
+    if: always()
     runs-on: ubuntu-latest
     permissions:
       contents: write
