@@ -14,30 +14,30 @@ class InfoPage extends StatelessWidget {
           _buildStep(
             context,
             '1',
-            '获取 Peer ID',
-            '打开左上角抽屉菜单，查看你的本机 Peer ID。\n将此 ID 分享给想聊天的朋友。',
-            Icons.fingerprint,
+            '设置昵称',
+            '打开左上角菜单 → 设置，修改你的显示名称。\n扫码时对方会看到这个名字。',
+            Icons.edit_rounded,
           ),
           _buildStep(
             context,
             '2',
-            '添加联系人',
-            '点击右下角 + 按钮，输入对方的 Peer ID 和显示名称。\n双方互相添加后即可开始聊天。',
-            Icons.person_add_rounded,
+            '展示二维码',
+            '点击右下角 + → 「我的二维码」，打开你的专属二维码。\n让对方扫码，即可自动添加好友。',
+            Icons.qr_code_rounded,
           ),
           _buildStep(
             context,
             '3',
-            '开始聊天',
-            '在联系人列表中点击好友，进入聊天界面。\n输入消息后点击发送按钮或按回车键。',
-            Icons.chat_rounded,
+            '扫码添加好友',
+            '点击右下角 + → 「扫码连接」，扫描对方的二维码。\n好友会自动添加到联系人列表，昵称来自对方设置。',
+            Icons.camera_alt_rounded,
           ),
           _buildStep(
             context,
             '4',
-            'P2P 连接',
-            'JustChat 采用 P2P 直连技术，消息不经过服务器。\n需要双方网络支持 NAT 穿透。\n如果连接失败，系统会自动尝试 TURN 中继。',
-            Icons.link_rounded,
+            '开始聊天',
+            '在联系人列表中点击好友，进入聊天界面。\n双方通过 WebRTC P2P 直连，消息不经过任何服务器。',
+            Icons.chat_rounded,
           ),
           const SizedBox(height: 16),
           Container(
@@ -53,15 +53,15 @@ class InfoPage extends StatelessWidget {
                   Icon(Icons.lightbulb_outline, color: JustChatApp.teal, size: 20),
                   SizedBox(width: 8),
                   Text('小提示',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: JustChatApp.teal)),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: JustChatApp.teal)),
                 ]),
                 SizedBox(height: 8),
-                Text('• 长按消息可以复制内容\n'
-                    '• 联系人卡片上绿色圆点表示在线\n'
-                    '• 在设置中可以修改昵称和服务器地址\n'
-                    '• 信令服务器只负责协调连接，不中转聊天数据',
+                Text('• 先在自己手机设置好昵称，再展示二维码让好友扫\n'
+                    '• 扫码后好友自动添加到列表，昵称为对方设置的名字\n'
+                    '• 双方连接同一信号服务器时，P2P 连接自动完成\n'
+                    '• 如无信号服务器，连接建立可能需要等待几秒',
                     style: TextStyle(fontSize: 13, height: 1.6)),
               ],
             ),

@@ -4,6 +4,9 @@ import 'dart:io';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+/// Connection mode for a peer.
+enum ConnectionMode { signaling, stunOnly }
+
 class P2pService {
   WebSocketChannel? _channel;
   bool _signalingConnected = false;
@@ -17,18 +20,19 @@ class P2pService {
   /// Pending ICE candidates collected before remote description is set.
   final Map<String, List<RTCIceCandidate>> _pendingCandidates = {};
 
-  /// ICE candidates collected for manual (non-signaling) mode — one list per peer.
+  /// ICE candidates collected for manual mode — one list per peer.
   final Map<String, List<RTCIceCandidate>> _manualCandidates = {};
+
+  /// Current connection mode per peer.
+  final Map<String, ConnectionMode> _connectionModes = {};
+
+  /// My display name for use in JTC2 pairing codes.
+  String myDisplayName = '我';
 
   // ── Callbacks ──
 
-  /// Called when a data message is received from a peer.
   void Function(String peerId, String message)? onDataReceived;
-
-  /// Called when a peer's connection state changes.
   void Function(String peerId, bool connected)? onConnectionStateChanged;
-
-  /// Called on error.
   void Function(String error)? onError;
 
   // ── Getters ──
@@ -37,6 +41,70 @@ class P2pService {
 
   bool isPeerConnected(String peerId) {
     return _dataChannels.containsKey(peerId);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // JTC2: Pairing token exchange (zero-friction mode)
+  // ══════════════════════════════════════════════════════════════════════
+
+  /// Generate a short pairing token (no SDP) for QR code display.
+  /// The actual WebRTC negotiation happens via signaling server or fallback.
+  Future<String> generatePairingToken(String peerId) async {
+    // If connected to signaling server, register intent.
+    if (_signalingConnected) {
+      _sendSignal({
+        'cmd': 'pair_intent',
+        'peer_id': peerId,
+        'display_name': myDisplayName,
+      });
+      return peerId; // Short enough for QR directly.
+    }
+
+    // Without signaling: return the short-lived token.
+    // The scanner will initiate STUN-only negotiation.
+    return peerId;
+  }
+
+  /// Connect via pairing token (scanner side).
+  /// Automatically resolves via signaling server or falls back to STUN.
+  Future<void> connectViaPairing(String remotePeerId, {String? remoteName}) async {
+    _connectionModes[remotePeerId] = ConnectionMode.signaling;
+
+    if (_signalingConnected) {
+      // Ask signaling server to relay our intent.
+      _sendSignal({
+        'cmd': 'connect_via_pair',
+        'target_peer_id': remotePeerId,
+        'display_name': myDisplayName,
+      });
+
+      // Wait for signaling to route ICE — handled by _handleSignalingMessage.
+      return;
+    }
+
+    // Fallback: STUN-only direct connection (local network or NAT-punched).
+    // Both sides create offers concurrently; first to connect wins.
+    _tryStunDirectConnect(remotePeerId);
+  }
+
+  Future<void> _tryStunDirectConnect(String peerId) async {
+    _connectionModes[peerId] = ConnectionMode.stunOnly;
+
+    final pc = await _buildPeerConnection(peerId);
+
+    // Create data channel + offer.
+    final dc = await pc.createDataChannel('chat', RTCDataChannelInit());
+    dc.onMessage = (RTCDataChannelMessage m) {
+      onDataReceived?.call(peerId, m.text);
+    };
+    _dataChannels[peerId] = dc;
+
+    try {
+      final offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+    } catch (e) {
+      onError?.call('STUN direct offer failed: $e');
+    }
   }
 
   // ══════════════════════════════════════════════════════════════════════
@@ -88,6 +156,10 @@ class P2pService {
       case 'connect_req':
         _handleIncomingConnection(msg['from_id'] as String);
         break;
+      case 'pair_connect':
+        // Incoming connection via JTC2 pairing.
+        _handlePairConnect(msg);
+        break;
       case 'sdp_offer':
         _handleSdpOffer(msg);
         break;
@@ -95,7 +167,6 @@ class P2pService {
         _handleIceCandidate(msg);
         break;
       case 'accept_connect':
-        //对方接受了连接请求，可以开始WebRTC协商
         break;
       case 'error':
         onError?.call(msg['message'] as String? ?? 'unknown error');
@@ -103,8 +174,26 @@ class P2pService {
     }
   }
 
+  void _handlePairConnect(Map<String, dynamic> msg) {
+    final fromId = msg['from_id'] as String;
+    _connectionModes[fromId] = ConnectionMode.signaling;
+    // The signaling server will route SDP offers via existing logic.
+    // Initiate WebRTC connection.
+    _createOfferPeerConnection(fromId).then((_) async {
+      _sendSignal({'cmd': 'accept_connect', 'target_id': fromId});
+      final offer = await _peers[fromId]!.createOffer();
+      await _peers[fromId]!.setLocalDescription(offer);
+      _sendSignal({
+        'cmd': 'sdp_offer',
+        'target_id': fromId,
+        'sdp': jsonEncode(offer.toMap()),
+      });
+    });
+  }
+
   /// Initiate a P2P connection to a remote peer (via signaling server).
   Future<void> connect(String targetId) async {
+    _connectionModes[targetId] = ConnectionMode.signaling;
     _sendSignal({'cmd': 'connect', 'target_id': targetId});
     await _createOfferPeerConnection(targetId);
     final offer = await _peers[targetId]!.createOffer();
@@ -166,7 +255,7 @@ class P2pService {
   }
 
   // ══════════════════════════════════════════════════════════════════════
-  // Manual SDP exchange mode (zero server)
+  // Manual SDP exchange mode (zero server — legacy/fallback)
   // ══════════════════════════════════════════════════════════════════════
 
   /// Generate a connection code (offer side).
@@ -213,12 +302,12 @@ class P2pService {
 
     final sdpMap = data['sdp'] as Map<String, dynamic>;
     final candidates = (data['candidates'] as List?)
-        ?.map((c) => RTCIceCandidate(
-              c['candidate'] as String,
-              c['sdpMid'] as String?,
-              c['sdpMLineIndex'] as int?,
-            ))
-        .toList() ??
+            ?.map((c) => RTCIceCandidate(
+                  c['candidate'] as String,
+                  c['sdpMid'] as String?,
+                  c['sdpMLineIndex'] as int?,
+                ))
+            .toList() ??
         [];
 
     final pc = await _createAnswerPeerConnection(peerId);
@@ -267,12 +356,12 @@ class P2pService {
 
     final sdpMap = data['sdp'] as Map<String, dynamic>;
     final candidates = (data['candidates'] as List?)
-        ?.map((c) => RTCIceCandidate(
-              c['candidate'] as String,
-              c['sdpMid'] as String?,
-              c['sdpMLineIndex'] as int?,
-            ))
-        .toList() ??
+            ?.map((c) => RTCIceCandidate(
+                  c['candidate'] as String,
+                  c['sdpMid'] as String?,
+                  c['sdpMLineIndex'] as int?,
+                ))
+            .toList() ??
         [];
 
     final pc = _peers[peerId];
@@ -381,6 +470,7 @@ class P2pService {
     _peers.remove(peerId);
     _pendingCandidates.remove(peerId);
     _manualCandidates.remove(peerId);
+    _connectionModes.remove(peerId);
     onConnectionStateChanged?.call(peerId, false);
   }
 
@@ -410,6 +500,8 @@ class P2pService {
     _peers.clear();
     _dataChannels.clear();
     _pendingCandidates.clear();
+    _manualCandidates.clear();
+    _connectionModes.clear();
     _channel?.sink.close();
     _signalingConnected = false;
   }

@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import '../services/p2p_service.dart';
+import '../services/storage_service.dart';
+import 'pairing_code.dart';
 
 class ChatMessage {
   final String id;
@@ -18,6 +20,22 @@ class ChatMessage {
     required this.timestamp,
     required this.isMine,
   });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'senderId': senderId,
+        'content': content,
+        'timestamp': timestamp.millisecondsSinceEpoch,
+        'isMine': isMine,
+      };
+
+  factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
+        id: json['id'] as String,
+        senderId: json['senderId'] as String,
+        content: json['content'] as String,
+        timestamp: DateTime.fromMillisecondsSinceEpoch(json['timestamp'] as int),
+        isMine: json['isMine'] as bool,
+      );
 }
 
 class Contact {
@@ -48,6 +66,22 @@ class Contact {
       lastSeen: lastSeen ?? this.lastSeen,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'peerId': peerId,
+        'displayName': displayName,
+        'online': online,
+        'lastSeen': lastSeen?.millisecondsSinceEpoch,
+      };
+
+  factory Contact.fromJson(Map<String, dynamic> json) => Contact(
+        peerId: json['peerId'] as String,
+        displayName: json['displayName'] as String,
+        online: json['online'] as bool? ?? false,
+        lastSeen: json['lastSeen'] != null
+            ? DateTime.fromMillisecondsSinceEpoch(json['lastSeen'] as int)
+            : null,
+      );
 }
 
 class ChatState extends ChangeNotifier {
@@ -81,6 +115,50 @@ class ChatState extends ChangeNotifier {
     _p2pService.onDataReceived = _onPeerMessage;
     _p2pService.onConnectionStateChanged = _onConnectionChanged;
     _p2pService.onError = _onP2pError;
+    _loadPersisted();
+  }
+
+  Future<void> _loadPersisted() async {
+    // Load saved contacts.
+    final savedContacts = await StorageService.loadContacts();
+    _contacts.addAll(savedContacts);
+
+    // Load saved messages.
+    final savedMessages = await StorageService.loadMessages();
+    _messages.addAll(savedMessages);
+
+    // Load saved settings.
+    final settings = await StorageService.loadSettings();
+    if (settings.containsKey('displayName')) {
+      _displayName = settings['displayName']!;
+    }
+    if (settings.containsKey('autoConnect')) {
+      _autoConnect = settings['autoConnect'] == 'true';
+    }
+    if (settings.containsKey('notificationsEnabled')) {
+      _notificationsEnabled = settings['notificationsEnabled'] == 'true';
+    }
+    if (settings.containsKey('signalingServer')) {
+      _signalingServer = settings['signalingServer']!;
+    }
+    notifyListeners();
+  }
+
+  Future<void> _persistContacts() => StorageService.saveContacts(_contacts);
+
+  Future<void> _persistSettings() => StorageService.saveSettings({
+        'displayName': _displayName,
+        'autoConnect': _autoConnect.toString(),
+        'notificationsEnabled': _notificationsEnabled.toString(),
+        'signalingServer': _signalingServer,
+      });
+
+  Future<void> _persistMessages() => StorageService.saveMessages(_messages);
+
+  Future<void> _appendAndPersistMessage(String peerId, ChatMessage msg) {
+    _messages.putIfAbsent(peerId, () => []);
+    _messages[peerId]!.add(msg);
+    return StorageService.appendMessage(peerId, msg);
   }
 
   String _generateShortId() {
@@ -116,22 +194,27 @@ class ChatState extends ChangeNotifier {
 
   void setDisplayName(String name) {
     _displayName = name;
+    _p2pService.myDisplayName = name;
     notifyListeners();
+    _persistSettings();
   }
 
   void setNotificationsEnabled(bool v) {
     _notificationsEnabled = v;
     notifyListeners();
+    _persistSettings();
   }
 
   void setAutoConnect(bool v) {
     _autoConnect = v;
     notifyListeners();
+    _persistSettings();
   }
 
   void setSignalingServer(String url) {
     _signalingServer = url;
     notifyListeners();
+    _persistSettings();
   }
 
   void setActiveContact(String peerId) {
@@ -147,17 +230,19 @@ class ChatState extends ChangeNotifier {
       _contacts.add(contact);
     }
     notifyListeners();
+    _persistContacts();
   }
 
   void removeContact(String peerId) {
     _contacts.removeWhere((c) => c.peerId == peerId);
     _messages.remove(peerId);
     notifyListeners();
+    _persistContacts();
+    _persistMessages();
   }
 
   void addMessage(String contactId, ChatMessage message) {
-    _messages.putIfAbsent(contactId, () => []);
-    _messages[contactId]!.add(message);
+    _appendAndPersistMessage(contactId, message);
     notifyListeners();
   }
 
@@ -249,7 +334,47 @@ class ChatState extends ChangeNotifier {
   }
 
   // ══════════════════════════════════════════════════════════════════════
-  // Manual SDP exchange mode (zero server)
+  // JTC2: Pairing token exchange (zero-friction mode)
+  // ══════════════════════════════════════════════════════════════════════
+
+  /// Generate a short pairing token for QR code.
+  /// The actual WebRTC negotiation happens via signaling server or STUN fallback.
+  PairingCode generatePairingCode() {
+    final token = _uuid.v4().substring(0, 16);
+    final code = PairingCode(
+      token: token,
+      displayName: _displayName,
+      signalingServer: _signalingConnected ? _signalingServer : null,
+    );
+    return code;
+  }
+
+  /// Accept a scanned pairing code: auto-create contact + initiate connection.
+  Future<void> acceptPairingCode(PairingCode code) async {
+    final peerId = 'pair_${code.token}';
+
+    // Create contact with the remote user's name immediately.
+    addContact(Contact(peerId: peerId, displayName: code.displayName, online: false));
+    setActiveContact(peerId);
+
+    // If both are on same signaling server, connect via signaling.
+    if (_signalingConnected && code.signalingServer == _signalingServer) {
+      _pendingManualPeerId = peerId;
+      await _p2pService.connectViaPairing(peerId, remoteName: code.displayName);
+      _lastError = null;
+      notifyListeners();
+      return;
+    }
+
+    // Fallback: STUN-only direct connection.
+    _pendingManualPeerId = peerId;
+    await _p2pService.connectViaPairing(peerId, remoteName: code.displayName);
+    _lastError = null;
+    notifyListeners();
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Legacy: Manual SDP exchange mode (JTC1, zero server)
   // ══════════════════════════════════════════════════════════════════════
 
   /// Generate a connection code to share with the other peer.
@@ -302,22 +427,48 @@ class ChatState extends ChangeNotifier {
   }
 
   /// Handle an incoming connection code (from deep link or share).
-  /// Determines if it's an offer or answer, processes accordingly.
   Future<void> handleConnectionCode(String code) async {
-    if (!code.startsWith('JTC1:')) return;
+    // JTC2: short pairing token
+    if (code.startsWith('JTC2:')) {
+      try {
+        final pairingCode = PairingCode.decode(code);
+        await acceptPairingCode(pairingCode);
+      } catch (e) {
+        _lastError = '处理连接码失败: $e';
+        notifyListeners();
+      }
+      return;
+    }
+
+    // JTC1: legacy full SDP exchange
+    if (!code.startsWith('JTC1:')) {
+      _lastError = '无效的连接码格式。请确认对方使用 JustChat。';
+      notifyListeners();
+      return;
+    }
 
     try {
-      final compressed = base64Url.decode(code.substring(5));
-      final json = utf8.decode(zlib.decode(compressed));
-      final data = jsonDecode(json) as Map<String, dynamic>;
+      // Check if it's a compressed answer (gzip) or offer (zlib).
+      final raw = code.substring(5);
+      Map<String, dynamic> data;
+      try {
+        // Try offer format (zlib).
+        final compressed = base64Url.decode(raw);
+        final jsonStr = utf8.decode(zlib.decode(compressed));
+        data = jsonDecode(jsonStr) as Map<String, dynamic>;
+      } catch (_) {
+        // Try answer format (gzip).
+        final compressed = base64.decode(raw);
+        final jsonStr = utf8.decode(gzip.decode(compressed));
+        data = jsonDecode(jsonStr) as Map<String, dynamic>;
+      }
+
       final sdpMap = data['sdp'] as Map<String, dynamic>;
       final sdpType = sdpMap['type'] as String;
 
       if (sdpType == 'offer') {
-        // 收到 offer → 生成应答并用联系人保存状态
         await acceptConnectionCode(code);
       } else if (sdpType == 'answer') {
-        // 收到 answer → 完成连接
         if (_pendingManualPeerId == null) {
           _lastError = '没有等待中的连接。请先生成连接码。';
           notifyListeners();

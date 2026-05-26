@@ -20,7 +20,6 @@ justtalk-flutter/windows/flutter/ephemeral/
 justtalk-flutter/windows/flutter/generated_plugin_registrant*
 justtalk-flutter/linux/flutter/ephemeral/
 justtalk-flutter/linux/flutter/generated_plugin_registrant*
-justtalk-flutter/pubspec.lock
 
 # IDE
 .idea/
@@ -37,3 +36,7 @@ claude-run.sh
 # Claude
 .claude/settings.local.json
 .claude/worktrees/
+
+#env
+.env
+env/

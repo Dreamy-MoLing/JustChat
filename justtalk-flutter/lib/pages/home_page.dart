@@ -92,122 +92,115 @@ class _HomePageState extends State<HomePage> {
 
   void _showMyQrCode() async {
     final state = context.read<ChatState>();
-    String? code;
-    bool loading = true;
-    String? error;
+    // Generate JTC2 short pairing token for QR code.
+    final pairingCode = state.generatePairingCode();
+    final qrData = pairingCode.encode();
+    String? code = qrData;
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) {
-          if (loading && code == null && error == null) {
-            state.generateConnectionCode().then((c) {
-              if (ctx.mounted) setState(() { code = c; loading = false; });
-            }).catchError((e) {
-              if (ctx.mounted) setState(() { error = e.toString(); loading = false; });
-            });
-          }
-
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             title: const Text('我的二维码'),
             content: SizedBox(
               width: double.maxFinite,
-              child: loading
-                  ? const Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 16),
-                        Text('正在生成连接码...'),
-                      ],
-                    )
-                  : error != null
-                      ? Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.error_outline, color: Colors.red, size: 48),
-                            const SizedBox(height: 12),
-                            Text(error!, textAlign: TextAlign.center),
-                          ],
-                        )
-                      : Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text('让对方扫码连接我', style: TextStyle(fontSize: 14)),
-                            const SizedBox(height: 16),
-                            Card(
-                              elevation: 2,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: QrImageView(
-                                  data: code!,
-                                  version: QrVersions.auto,
-                                  size: 200,
-                                  eyeStyle: const QrEyeStyle(
-                                    eyeShape: QrEyeShape.square,
-                                    color: JustChatApp.teal,
-                                  ),
-                                  dataModuleStyle: const QrDataModuleStyle(
-                                    dataModuleShape: QrDataModuleShape.square,
-                                    color: JustChatApp.teal,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: () {
-                                      Clipboard.setData(ClipboardData(text: code!));
-                                      ScaffoldMessenger.of(ctx).showSnackBar(
-                                        const SnackBar(content: Text('连接码已复制')),
-                                      );
-                                    },
-                                    icon: const Icon(Icons.copy, size: 16),
-                                    label: const Text('复制'),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: () => Share.share(
-                                      code!,
-                                    ),
-                                    icon: const Icon(Icons.share, size: 16),
-                                    label: const Text('分享'),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            const Row(
-                              children: [
-                                Icon(Icons.info_outline, size: 14, color: Colors.grey),
-                                SizedBox(width: 6),
-                                Expanded(
-                                  child: Text(
-                                    '若二维码无法扫描（数据量较大），请用「分享」或「复制」发送给好友。收到应答码后用「粘贴连接码」完成连接。',
-                                    style: TextStyle(fontSize: 11, color: Colors.grey),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('让对方扫码连接我', style: TextStyle(fontSize: 14)),
+                  const SizedBox(height: 8),
+                  Card(
+                    color: JustChatApp.cream.withAlpha(80),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.person, size: 16, color: JustChatApp.teal.withAlpha(150)),
+                          const SizedBox(width: 6),
+                          Text(
+                            '扫码后将以「${state.displayName}」身份连接',
+                            style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: QrImageView(
+                        data: code,
+                        version: QrVersions.auto,
+                        size: 200,
+                        eyeStyle: const QrEyeStyle(
+                          eyeShape: QrEyeShape.square,
+                          color: JustChatApp.teal,
                         ),
+                        dataModuleStyle: const QrDataModuleStyle(
+                          dataModuleShape: QrDataModuleShape.square,
+                          color: JustChatApp.teal,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: code));
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              const SnackBar(content: Text('连接码已复制')),
+                            );
+                          },
+                          icon: const Icon(Icons.copy, size: 16),
+                          label: const Text('复制'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => Share.share(code),
+                          icon: const Icon(Icons.share, size: 16),
+                          label: const Text('分享'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Row(
+                    children: [
+                      Icon(Icons.check_circle, size: 14, color: Color(0xFF22C55E)),
+                      SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '新版轻量二维码，扫码立即添加好友。双方连接信令服务器后自动完成 P2P 连接。',
+                          style: TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
             actions: [
-              if (!loading)
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('关闭'),
-                ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('关闭'),
+              ),
             ],
           );
         },
@@ -229,6 +222,15 @@ class _HomePageState extends State<HomePage> {
       await state.handleConnectionCode(result);
       if (mounted && state.pendingAnswerCode != null) {
         _showAnswerQrCode(state.pendingAnswerCode!);
+      } else if (mounted && result.startsWith('JTC2:')) {
+        // JTC2: contact auto-created, navigate to chat page directly.
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('好友已添加，正在连接...')),
+        );
+        if (mounted && state.activeContactId.isNotEmpty) {
+          Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const ChatPage()));
+        }
       }
     }
   }
@@ -322,7 +324,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _shareConnectionCode() async {
     final state = context.read<ChatState>();
     try {
-      final code = await state.generateConnectionCode();
+      final code = state.generatePairingCode().encode();
       if (!mounted) return;
       await Share.share(code);
     } catch (e) {
@@ -447,7 +449,26 @@ class _HomePageState extends State<HomePage> {
                     setState(() { loading = true; error = null; });
                     try {
                       final state = context.read<ChatState>();
-                      // Determine if offer or answer by parsing the code.
+
+                      // JTC2: short pairing code — immediate connect.
+                      if (code.startsWith('JTC2:')) {
+                        await state.handleConnectionCode(code);
+                        if (ctx.mounted) {
+                          setState(() {
+                            loading = false;
+                            answerCode = '[已连接]';
+                          });
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            const SnackBar(content: Text('好友已添加，正在连接...')),
+                          );
+                          Future.delayed(const Duration(milliseconds: 800), () {
+                            if (ctx.mounted) Navigator.pop(ctx);
+                          });
+                        }
+                        return;
+                      }
+
+                      // JTC1: legacy flow.
                       await state.handleConnectionCode(code);
                       if (ctx.mounted) {
                         final pending = state.pendingAnswerCode;
@@ -456,7 +477,6 @@ class _HomePageState extends State<HomePage> {
                           loading = false;
                         });
                         if (pending == null && ctx.mounted) {
-                          // Closed as answer, just dismiss
                           Navigator.pop(ctx);
                         }
                       }
@@ -709,14 +729,19 @@ class _HomePageState extends State<HomePage> {
   void _showConnectionMenu() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      builder: (ctx) {
+        final bottomPad = MediaQuery.of(ctx).padding.bottom;
+        return Padding(
+          padding: EdgeInsets.only(top: 16, bottom: bottomPad + 8),
+          child: ListView(
+            shrinkWrap: true,
+            primary: false,
+            padding: EdgeInsets.zero,
+            children: [
             Container(
               width: 40, height: 4,
               decoration: BoxDecoration(
@@ -726,6 +751,7 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 16),
             const Text('连接方式',
+                textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 16),
             ListTile(
@@ -812,7 +838,8 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 8),
           ],
         ),
-      ),
+      );
+      },
     );
   }
 }

@@ -15,20 +15,8 @@ class _ChatPageState extends State<ChatPage> {
   final _scrollController = ScrollController();
 
   @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _sendMessage() {
-    final text = _messageController.text.trim();
-    if (text.isEmpty) return;
-
-    final state = context.read<ChatState>();
-    state.sendChatMessage(state.activeContactId, text);
-    _messageController.clear();
-
+  void initState() {
+    super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
   }
 
@@ -36,59 +24,77 @@ class _ChatPageState extends State<ChatPage> {
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
       );
     }
   }
 
+  void _sendMessage() {
+    final text = _messageController.text.trim();
+    if (text.isEmpty) return;
+    final state = context.read<ChatState>();
+    final contactId = state.activeContactId;
+    state.sendChatMessage(contactId, text);
+    _messageController.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+  }
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<ChatState>();
-    final contact = state.getContact(state.activeContactId);
-    final messages = state.getMessages(state.activeContactId);
+    final contactId = state.activeContactId;
+    final contact = state.getContact(contactId);
+    final messages = state.getMessages(contactId);
+    final isConnected = state.isPeerConnected(contactId);
 
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+          icon: const Icon(Icons.arrow_back_rounded, size: 22),
           onPressed: () => Navigator.pop(context),
         ),
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 32, height: 32,
+              width: 32,
+              height: 32,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [JustChatApp.tealLight, JustChatApp.creamDark],
-                ),
+                color: Colors.white.withAlpha(50),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Center(
                 child: Text(
                   contact?.initials ?? '?',
                   style: const TextStyle(
-                    color: JustChatApp.teal,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 12,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 10),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(contact?.displayName ?? ''),
                 Text(
-                  state.isPeerConnected(state.activeContactId) ? '已连接' : '未连接',
+                  contact?.displayName ?? '未知用户',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  isConnected ? '在线' : '离线',
                   style: TextStyle(
                     fontSize: 11,
-                    color: state.isPeerConnected(state.activeContactId)
-                        ? Colors.white.withAlpha(200)
-                        : Colors.white.withAlpha(120),
+                    color: Colors.white.withAlpha(180),
                   ),
                 ),
               ],
@@ -148,8 +154,12 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Widget _buildInputBar() {
+    final bottomPad = MediaQuery.of(context).padding.bottom;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: EdgeInsets.only(
+        left: 12, right: 12, top: 8,
+        bottom: bottomPad + 8,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
@@ -160,45 +170,44 @@ class _ChatPageState extends State<ChatPage> {
           ),
         ],
       ),
-      child: SafeArea(
-        child: Row(
-          children: [
-            IconButton(
-              icon: Icon(Icons.add_circle_outline_rounded,
-                  color: JustChatApp.teal.withAlpha(150)),
-              onPressed: () {},
-            ),
-            Expanded(
-              child: TextField(
-                controller: _messageController,
-                decoration: const InputDecoration(
-                  hintText: '输入消息...',
-                  contentPadding:
-                      EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                ),
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _sendMessage(),
-                maxLines: null,
+      child: Row(
+        children: [
+          IconButton(
+            icon: Icon(Icons.add_circle_outline_rounded,
+                color: JustChatApp.teal.withAlpha(150)),
+            onPressed: () {},
+          ),
+          Expanded(
+            child: TextField(
+              controller: _messageController,
+              decoration: const InputDecoration(
+                hintText: '输入消息...',
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               ),
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _sendMessage(),
+              maxLines: 5,
+              minLines: 1,
             ),
-            const SizedBox(width: 4),
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    JustChatApp.teal,
-                    JustChatApp.tealLight.withAlpha(200),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(16),
+          ),
+          const SizedBox(width: 4),
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  JustChatApp.teal,
+                  JustChatApp.tealLight.withAlpha(200),
+                ],
               ),
-              child: IconButton(
-                icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-                onPressed: _sendMessage,
-              ),
+              borderRadius: BorderRadius.circular(16),
             ),
-          ],
-        ),
+            child: IconButton(
+              icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+              onPressed: _sendMessage,
+            ),
+          ),
+        ],
       ),
     );
   }

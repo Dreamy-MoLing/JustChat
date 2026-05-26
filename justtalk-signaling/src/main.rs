@@ -21,6 +21,8 @@ use warp::Filter;
 struct PeerInfo {
     peer_id: String,
     pubkey: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    display_name: Option<String>,
 }
 
 /// A connected peer with its message sender.
@@ -177,6 +179,7 @@ async fn handle_ws(ws: WebSocket, state: State) {
                 info: PeerInfo {
                     peer_id: peer_id.clone(),
                     pubkey,
+                    display_name: None,
                 },
                 sender: tx,
             },
@@ -322,6 +325,45 @@ async fn handle_ws(ws: WebSocket, state: State) {
                 })
                 .to_string();
                 let _ = send_to_peer(&state, target_id, &msg);
+            }
+            "pair_intent" => {
+                let display_name = val
+                    .get("display_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(&peer_id)
+                    .to_string();
+                // Store display_name on this peer's info.
+                {
+                    let mut state = state.write();
+                    if let Some(peer) = state.get_mut(&peer_id) {
+                        peer.info.display_name = Some(display_name.clone());
+                    }
+                }
+                tracing::info!(peer_id = %peer_id, display_name = %display_name, "pair_intent set");
+            }
+            "connect_via_pair" => {
+                let target_id = match val.get("target_peer_id").and_then(|v| v.as_str()) {
+                    Some(id) => id,
+                    None => continue,
+                };
+                let display_name = val
+                    .get("display_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(&peer_id)
+                    .to_string();
+                let msg = serde_json::json!({
+                    "cmd": "pair_connect",
+                    "from_id": peer_id,
+                    "display_name": display_name,
+                })
+                .to_string();
+                if send_to_peer(&state, target_id, &msg).is_err() {
+                    let _ = send_to_peer(
+                        &state,
+                        &peer_id,
+                        &serde_json::json!({"cmd": "error", "message": "peer not found"}).to_string(),
+                    );
+                }
             }
             _ => {
                 let _ = send_to_peer(
