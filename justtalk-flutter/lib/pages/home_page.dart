@@ -7,7 +7,6 @@ import 'package:share_plus/share_plus.dart';
 import '../main.dart';
 import '../models/chat_state.dart';
 import '../models/notification_state.dart';
-import '../models/pairing_code.dart';
 import 'chat_page.dart';
 import 'info_page.dart';
 import 'notifications_page.dart';

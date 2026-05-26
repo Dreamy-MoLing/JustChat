@@ -1,14 +1,25 @@
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'models/chat_state.dart';
 import 'models/notification_state.dart';
 import 'pages/home_page.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
   final chatState = ChatState();
   final notifState = NotificationState();
+
+  // 初始化 Rust 引擎
+  try {
+    final appDir = await getApplicationDocumentsDirectory();
+    await chatState.init(appDir.path);
+  } catch (e) {
+    debugPrint('引擎初始化失败（将使用 fallback 模式）: $e');
+  }
 
   // Auto-connect to signaling server if enabled.
   if (chatState.autoConnect) {

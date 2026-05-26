@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../main.dart';
 import '../models/chat_state.dart';
-import '../services/p2p_service.dart';
 
 class ChatPage extends StatefulWidget {
   final bool embedded;

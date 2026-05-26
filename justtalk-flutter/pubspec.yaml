@@ -1,7 +1,7 @@
 name: justchat
 description: "JustChat — simple P2P chat"
 publish_to: 'none'
-version: 0.0.2
+version: 0.0.3
 
 environment:
   sdk: ^3.9.0
@@ -22,6 +22,7 @@ dependencies:
   qr_flutter: ^4.1.0
   share_plus: ^10.0.0
   app_links: ^6.0.0
+  ffi: ^2.1.3
 
 dev_dependencies:
   flutter_test:

@@ -1,20 +1,20 @@
 //! JustTalk core library — P2P text chat, end-to-end encryption, voice chat.
 //!
-//! Architecture:
-//! - `protocol`  — wire format (envelope, message types)
+//! Architecture (v0.0.3):
+//! - `protocol`  — wire format (signaling, pairing, webrtc types, message envelope)
 //! - `crypto`    — encryption trait + implementations
-//! - `network`   — P2P transport + signaling client
-//! - `identity`  — Ed25519 keypairs, contacts
-//! - `voice`     — audio capture/playback/encoding (phase 3)
-//! - `storage`   — local SQLite persistence
+//! - `network`   — signaling WebSocket client (tokio-tungstenite)
+//! - `identity`  — Ed25519 keypairs
+//! - `engine`    — P2pEngine: 核心引擎，编排信令/WebRTC/配对/存储
+//! - `storage`   — JSON 文件持久化 (messages, contacts, settings)
 
 pub mod protocol;
 pub mod crypto;
 pub mod identity;
 pub mod network;
+pub mod engine;
 pub mod storage;
-#[cfg(feature = "voice")]
-pub mod voice;
+pub mod api;
 
 /// Common error type for justtalk-core operations.
 #[derive(Debug, thiserror::Error)]

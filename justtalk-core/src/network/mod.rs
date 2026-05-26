@@ -1,7 +1,7 @@
-//! P2P transport and signaling client.
+//! 网络传输 — 信令客户端。
+//!
+//! P2P 连接管理已迁移到 `crate::engine` 模块。
 
-pub mod p2p;
 pub mod signaling_client;
 
-pub use p2p::P2pConnection;
-pub use signaling_client::SignalingClient;
+pub use signaling_client::{SignalingClient, SignalingConfig, SignalingEvent};

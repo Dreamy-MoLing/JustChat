@@ -50,19 +50,13 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
-      - name: Build APK (release)
+      - name: Build APK (release, split per ABI)
         run: flutter build apk --release --split-per-abi
-
-      - name: Build universal APK (fallback)
-        run: flutter build apk --release
 
       - name: Rename artifacts
         run: |
           TAG="${{ github.ref_name }}"
           mkdir -p artifacts
-          # Universal APK
-          cp build/app/outputs/flutter-apk/app-release.apk artifacts/JustChat-${TAG}-android-universal.apk
-          # Split APKs (if generated)
           for f in build/app/outputs/flutter-apk/app-*-release.apk; do
             [ -f "$f" ] || continue
             arch=$(echo "$f" | sed -E 's/.*app-(.+)-release\.apk/\1/')
