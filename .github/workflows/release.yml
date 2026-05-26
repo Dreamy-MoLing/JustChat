@@ -111,7 +111,7 @@ jobs:
           $TAG = "$env:GITHUB_REF_NAME"
           mkdir artifacts -Force
           # Use 7z which is pre-installed on GitHub Windows runners
-          cd build\windows\runner\Release
+          cd build\windows\x64\runner\Release
           7z a -tzip "$env:GITHUB_WORKSPACE\$env:APP_DIR\artifacts\JustChat-${TAG}-windows-x64.zip" * -mx=9
         shell: pwsh
 
