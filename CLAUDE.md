@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-项目根约束文件 — Claude Code 在本仓库工作时的指引。
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## 项目概述
 
-JustChat — P2P 文字聊天应用。扫码即连，无需账号。
+JustChat — P2P 文字聊天应用，扫码即连，无需账号。包名: `justchat`，工作区目录名: `JustTalk`。
 
 | 属性 | 值 |
 |------|-----|
@@ -13,152 +13,106 @@ JustChat — P2P 文字聊天应用。扫码即连，无需账号。
 | Rust | edition 2024 |
 | 当前版本 | v0.1.0 (已发布) |
 | GitHub | https://github.com/Dreamy-MoLing/JustChat |
-| CI/CD | `.github/workflows/release.yml` — 打 tag v* 自动三端构建 |
-
-## 目录结构
-
-```
-JustTalk/                               # 工作区根目录
-├── justtalk-flutter/                   # Flutter 跨平台应用
-│   ├── lib/
-│   │   ├── main.dart                   # App 入口 + 深链接处理 + 主题定义
-│   │   ├── models/
-│   │   │   ├── chat_state.dart         # 核心状态: 联系人/消息/P2P/设置 (ChangeNotifier)
-│   │   │   ├── notification_state.dart # 通知列表、未读计数 (ChangeNotifier)
-│   │   │   └── pairing_code.dart       # JTC2 短 token 编解码
-│   │   ├── pages/
-│   │   │   ├── home_page.dart          # 联系人列表 + 抽屉 + 通知 + 添加联系人
-│   │   │   ├── chat_page.dart          # 聊天界面 (消息气泡、输入框)
-│   │   │   ├── info_page.dart          # 使用教程 (4步)
-│   │   │   ├── notifications_page.dart # 通知列表页
-│   │   │   ├── qr_scanner_page.dart    # JTC2 扫码页
-│   │   │   └── settings_page.dart      # 设置 (显示名/信令/通知开关)
-│   │   └── services/
-│   │       ├── p2p_service.dart        # WebRTC 连接 + 信令 + 手动 SDP 交换
-│   │       └── storage_service.dart    # SharedPreferences 持久化 (消息/联系人)
-│   ├── test/
-│   │   └── widget_test.dart            # 基础渲染测试
-│   ├── android/                        # Android 平台
-│   ├── ios/                            # iOS 平台
-│   ├── windows/                        # Windows 平台
-│   └── linux/                          # Linux 平台
-├── justtalk-core/                      # Rust 核心库 (v0.2+ 使用)
-│   └── src/
-│       ├── crypto/   (plain.rs, traits.rs)
-│       ├── identity/ (keypair.rs)
-│       ├── network/  (p2p.rs, signaling_client.rs)
-│       ├── protocol/ (message.rs, room.rs, signaling.rs)
-│       └── storage/  (messages.rs)
-├── justtalk-signaling/                 # Rust 信令服务器
-│   └── src/main.rs                     # Warp HTTP/WS, 端口 3000
-├── research/                           # 调研笔记 (P2P NAT/加密/语音)
-├── .github/workflows/
-│   └── release.yml                     # CI/CD: 三端并行构建
-├── CLAUDE.md                           # 本文件
-├── plan.md                             # 版本路线图
-├── ARCHITECTURE.md                     # 架构设计文档
-├── CODING_CONVENTIONS.md               # 编码规范
-└── README.md                           # 项目总览 + 快速开始
-```
 
 ## 常用命令
 
-### Flutter
-
 ```bash
+# Flutter（在 justtalk-flutter/ 下执行）
 cd justtalk-flutter
 flutter pub get
 flutter analyze                     # 必须零警告才能提交
 flutter test                        # 运行测试
-flutter run -d linux                # Linux 桌面
-flutter build apk --release         # Android APK
-flutter build linux --debug         # Linux 桌面构建
-flutter build windows --release     # Windows (需 Windows 宿主)
-flutter build ios --release --no-codesign  # iOS unsigned
-```
+flutter run -d linux                # Linux 桌面开发
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 flutter build apk --release
+flutter build linux --debug
+flutter build windows --release     # 需 Windows 宿主
+flutter build ios --release --no-codesign
 
-### Rust
-
-```bash
+# Rust（工作区根目录）
 cargo build                         # 构建整个工作区
 cargo test                          # 运行所有 Rust 测试
 cargo run -p justtalk-signaling     # 启动信令服务器 (0.0.0.0:3000)
 ```
 
-## 通信协议 (双协议栈)
-
-### JTC2 — 扫码配对 (v0.1 主协议)
-
-80 字节短 token，编码在 Version 4-5 QR 码中，任意扫码器可用。
+## 架构大图
 
 ```
-格式: JTC2:base64(version(1) + token(16) + nameLen(1) + name(N) + sigAddrLen(1) + sigAddr(N))
-流程: A 展示 QR → B 扫码 → 解码获取昵称 → 自动创建联系人 → 信令连接
+Flutter App (justtalk-flutter/)
+├── UI Layer (pages/)          HomePage, ChatPage, SettingsPage, NotificationsPage, QrScannerPage, InfoPage
+├── State (models/)            ChatState, NotificationState (ChangeNotifier + Provider)
+└── Services (services/)       P2pService (WebRTC + 信令), StorageService (SharedPreferences)
+         │
+         ├── WebSocket ──────► Rust 信令服务器 (justtalk-signaling/, Warp, :3000)
+         └── WebRTC DataChannel ─── P2P 直连 (STUN/TURN)
 ```
 
-### JTC1 — 手动 SDP 交换 (降级方案)
+**状态管理**: `MultiProvider` 注入 `ChatState` + `NotificationState` 全局单例。`Consumer<T>` 放在需要响应变化的最小 Widget 上。`context.read<T>()` 读取（不监听），`context.watch<T>()` 监听重绘。数据修改后必须调 `notifyListeners()`。只有这两个类使用 `ChangeNotifier`，新建状态类前先问能否复用 `ChatState`。
 
-连接码格式: `JTC1:` + base64(gzip(json))，含完整 SDP offer/answer + ICE candidates。
-用于无信令服务器场景。
+**持久化**: `SharedPreferences`，key 前缀 `messages_{peerId}`、`contacts`、`settings`。
 
-## 信令协议 (JSON over WebSocket)
+**主题**: Material 3，`JustChatApp.teal` (#0D9488) + `JustChatApp.cream` (#FFF8E1)，圆角 12-24px。字体走 `GoogleFonts.notoSansTextTheme()`。
 
-注册 → `register` → 返回 `registered` + 广播 `peer_online`
-配对 → `pair_intent` (存 display_name) → `connect_via_pair` (转发给目标 peer)
-连接 → `connect` / `accept_connect` → `sdp_offer` → `ice_candidate`
-心跳 → `ping` / `pong`
+## 通信协议
 
-## 关键架构决策
+**双协议栈，自动降级：**
 
-1. **Provider + ChangeNotifier** 状态管理（非 Riverpod/Bloc），保持轻量
-2. **SharedPreferences** 持久化（非 SQLite），v0.1 数据量小，够用
-3. **双协议栈**: JTC2（扫码/信令） + JTC1（手动/零服务器），自动降级
-4. **Rust 核心库当前未使用** — 为 v0.2 加密等预留，所有 v0.1 逻辑在 Dart 侧
-5. **Material 3 主题**: teal (#0D9488) + cream (#FFF8E1)，圆角 12-24px
-6. **配色常量** 在 `main.dart` 的 `JustChatApp` 类中定义（teal, cream, tealLight 等）
+| 协议 | 用途 | 格式 |
+|------|------|------|
+| JTC2 | 扫码配对（主力） | `JTC2:base64(version + token + name + sigAddr)`，80字节，QR Version 4-5 |
+| JTC1 | 手动 SDP 交换（降级） | `JTC1:` + base64(gzip(json))，含完整 SDP + ICE |
+
+**信令协议**: JSON over WebSocket，命令: `register` → `pair_intent` → `connect_via_pair` → `sdp_offer`/`ice_candidate` 转发 → `ping`/`pong` 心跳。
+
+**消息格式**: 当前 JSON 明文 over DataChannel。v0.2 升级 MessagePack + 端到端加密。
+
+详见 [ARCHITECTURE.md](ARCHITECTURE.md) 和 [plan.md](plan.md)。
+
+## 编码规则
+
+### 命名
+- Dart 文件: snake_case，类: PascalCase，方法/变量: camelCase，私有: `_` 前缀
+- Rust 文件/函数: snake_case，类型: PascalCase
+- 中文注释，英文变量/函数名
+
+### Widget
+- 嵌套超过 5 层 → 抽取独立 Widget
+- build 方法超过 200 行 → 抽取
+- 异步回调中检查 `context.mounted`
+- 所有 Widget 尽可能声明 `const` 构造器
+
+### Git
+- 提交格式: `type: short description`（feat/fix/refactor/docs/ci/chore）
+- 不直接提交到 main，使用 feature 分支 + PR
+- 推送 tag `v*.*.*` 触发 CI/CD 三端构建
+
+### 安全
+- WebSocket 消息体上限 64KB，peer_id 长度限制 128 字符
+- API key / token 用 GitHub Secrets，不硬编码
+
+### Rust
+- 优先 `anyhow::Result`，日志用 `tracing` crate
+- 信令消息体用 `serde_json::Value` 动态字段
 
 ## 当前版本边界
 
 ### v0.1.0 已实现
-- [x] JTC2 扫码配对 + 自动创建联系人
-- [x] JTC1 手动 SDP 交换
-- [x] WebRTC DataChannel 1对1文字聊天
-- [x] 信令服务器 (pair_intent / connect_via_pair 路由)
-- [x] 消息持久化 (SharedPreferences)
-- [x] 通知系统 (好友申请 / 更新 / 新消息)
-- [x] 联系人管理 + 在线状态
-- [x] 深链接 (justchat://connect?code=...)
+JTC2 扫码配对、JTC1 手动 SDP、WebRTC DataChannel 1v1 文字聊天、信令服务器、消息持久化、通知系统、联系人管理、深链接
 
-### v0.1.0 未包含 (下版本优先)
-- [ ] 局域网 mDNS 自动发现
-- [ ] 双向扫码验证 (Briar 风格)
-- [ ] 消息发送状态 (已发送/已送达/已读)
-- [ ] 消息时间线 (按日期分组)
-- [ ] 图片/文件传输
-- [ ] 消息编辑/撤回
+### 下版本优先
+mDNS 局域网发现、双向扫码验证、消息发送状态、消息时间线、图片/文件传输
 
 ### v0.2+ 规划
-- [ ] 端到端加密 (libsignal)
-- [ ] 多人文字群聊
-- [ ] 多人语音聊天
-
-## 质量要求
-
-- `flutter analyze` 必须零警告才能提交
-- Dart 使用 `dart format` 风格
-- Widget 树保持适度深度，超长时抽取独立 Widget
-- 中文注释，英文变量/函数名
-- 提交前运行 test 验证基础渲染
+端到端加密 (libsignal)、多人文字群聊、多人语音聊天
 
 ## CI/CD
 
-推送 `v*.*.*` 标签 → Actions 自动构建:
+推送 `v*.*.*` tag → Actions 自动构建 APK (ubuntu) + Windows ZIP + iOS .app/IPA (macos)。
 
-| 产物 | Runner |
-|------|--------|
-| APK (universal + split) | ubuntu-latest |
-| Windows ZIP (exe+DLLs) | windows-latest |
-| iOS .app (unsigned) | macos-latest |
-| iOS IPA (signed, 可选) | macos-latest |
+## 关键文档
 
-iOS 签名需先配置 GitHub Variables/Secrets，详见 README.md。
+| 文档 | 内容 |
+|------|------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | 完整架构图、数据流、状态模型 |
+| [CODING_CONVENTIONS.md](CODING_CONVENTIONS.md) | 详细编码规范 |
+| [plan.md](plan.md) | 版本路线图、任务分解、风险 |
+| [README.md](README.md) | 项目总览、快速开始、iOS 签名指南 |

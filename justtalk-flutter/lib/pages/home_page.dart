@@ -742,11 +742,13 @@ class _HomePageState extends State<HomePage> {
             primary: false,
             padding: EdgeInsets.zero,
             children: [
-            Container(
-              width: 40, height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.withAlpha(100),
-                borderRadius: BorderRadius.circular(2),
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withAlpha(100),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
             ),
             const SizedBox(height: 16),
