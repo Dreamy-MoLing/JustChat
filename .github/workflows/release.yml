@@ -1,0 +1,250 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g., v0.1.0)'
+        required: true
+
+env:
+  FLUTTER_VERSION: '3.44'
+  FLUTTER_CHANNEL: 'stable'
+  APP_DIR: justtalk-flutter
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.APP_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.APP_DIR }}/.dart_tool
+          key: flutter-pub-${{ hashFiles(format('{0}/pubspec.lock', env.APP_DIR)) }}
+          restore-keys: |
+            flutter-pub-
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Build APK (release)
+        run: flutter build apk --release --split-per-abi
+
+      - name: Build universal APK (fallback)
+        run: flutter build apk --release
+
+      - name: Rename artifacts
+        run: |
+          TAG="${{ github.ref_name }}"
+          mkdir -p artifacts
+          # Universal APK
+          cp build/app/outputs/flutter-apk/app-release.apk artifacts/JustChat-${TAG}-android-universal.apk
+          # Split APKs (if generated)
+          for f in build/app/outputs/flutter-apk/app-*-release.apk; do
+            [ -f "$f" ] || continue
+            arch=$(echo "$f" | sed -E 's/.*app-(.+)-release\.apk/\1/')
+            cp "$f" "artifacts/JustChat-${TAG}-android-${arch}.apk"
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: ${{ env.APP_DIR }}/artifacts/
+          retention-days: 7
+
+  windows:
+    name: Windows (x64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ${{ env.APP_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.APP_DIR }}/.dart_tool
+          key: flutter-pub-windows-${{ hashFiles(format('{0}/pubspec.lock', env.APP_DIR)) }}
+          restore-keys: |
+            flutter-pub-windows-
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Windows (release)
+        run: flutter build windows --release
+
+      - name: Package installer
+        run: |
+          $TAG = "$env:GITHUB_REF_NAME"
+          mkdir artifacts -Force
+          # Use 7z which is pre-installed on GitHub Windows runners
+          cd build\windows\runner\Release
+          7z a -tzip "$env:GITHUB_WORKSPACE\$env:APP_DIR\artifacts\JustChat-${TAG}-windows-x64.zip" * -mx=9
+        shell: pwsh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: ${{ env.APP_DIR }}/artifacts/
+          retention-days: 7
+
+  ios:
+    name: iOS
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: ${{ env.APP_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.APP_DIR }}/.dart_tool
+          key: flutter-pub-macos-${{ hashFiles(format('{0}/pubspec.lock', env.APP_DIR)) }}
+          restore-keys: |
+            flutter-pub-macos-
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Build iOS (release, unsigned)
+        run: flutter build ios --release --no-codesign
+        env:
+          # Suppress deprecated declaration warnings from plugins
+          GCC_TREAT_WARNINGS_AS_ERRORS: "NO"
+
+      - name: Package .app
+        run: |
+          TAG="${{ github.ref_name }}"
+          mkdir -p artifacts
+          cp -R build/ios/iphoneos/Runner.app artifacts/JustChat-${TAG}-ios-unsigned.app
+          # Also create an .xcarchive for distribution
+          mkdir -p artifacts/JustChat-${TAG}-ios.xcarchive/Products/Applications
+          cp -R build/ios/iphoneos/Runner.app artifacts/JustChat-${TAG}-ios.xcarchive/Products/Applications/
+          cd artifacts && zip -r "JustChat-${TAG}-ios-unsigned.app.zip" "JustChat-${TAG}-ios-unsigned.app"
+          zip -r "JustChat-${TAG}-ios.xcarchive.zip" "JustChat-${TAG}-ios.xcarchive"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: ${{ env.APP_DIR }}/artifacts/
+          retention-days: 7
+
+  # Optional: signed iOS build (requires Apple Developer Program account)
+  # ios-signed:
+  #   name: iOS (signed IPA)
+  #   runs-on: macos-latest
+  #   if: ${{ secrets.APPLE_DEVELOPER_SIGNING_ENABLED == 'true' }}
+  #   defaults:
+  #     run:
+  #       working-directory: ${{ env.APP_DIR }}
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Setup Flutter
+  #       uses: subosito/flutter-action@v2
+  #       with:
+  #         flutter-version: ${{ env.FLUTTER_VERSION }}
+  #         channel: ${{ env.FLUTTER_CHANNEL }}
+  #         cache: true
+  #     - name: Get dependencies
+  #       run: flutter pub get
+  #     - name: Import signing certificate
+  #       run: |
+  #         echo "${{ secrets.IOS_DISTRIBUTION_CERT_B64 }}" | base64 --decode > /tmp/cert.p12
+  #         echo "${{ secrets.IOS_DISTRIBUTION_PROFILE_B64 }}" | base64 --decode > /tmp/profile.mobileprovision
+  #         security create-keychain -p temp temp.keychain
+  #         security import /tmp/cert.p12 -k ~/Library/Keychains/temp.keychain -P "${{ secrets.IOS_CERT_PASSWORD }}" -A
+  #         mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+  #         cp /tmp/profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+  #     - name: Build IPA
+  #       run: flutter build ipa --release --export-method app-store
+  #     - name: Upload IPA
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: ios-signed
+  #         path: ${{ env.APP_DIR }}/build/ios/ipa/
+
+  release:
+    name: Create Release
+    needs: [android, windows, ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create GitHub Release
+        run: |
+          TAG="${{ github.ref_name }}"
+          # Collect all build artifacts
+          mkdir -p release-assets
+          find . -name '*.apk' -o -name '*.zip' | while read f; do
+            cp "$f" release-assets/
+          done
+
+          # Create or update the release
+          if gh release view "$TAG" --json id > /dev/null 2>&1; then
+            echo "Release $TAG already exists, uploading assets..."
+            gh release upload "$TAG" release-assets/* --clobber
+          else
+            echo "Creating release $TAG..."
+            # Extract version without 'v' prefix for commit message
+            VERSION="${TAG#v}"
+
+            # Generate release notes from commits since last tag
+            gh release create "$TAG" \
+              --title "JustChat $VERSION" \
+              --notes "See the [commit history](https://github.com/${{ github.repository }}/commits/$TAG) for changes in this release." \
+              release-assets/*
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
