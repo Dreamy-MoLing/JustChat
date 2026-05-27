@@ -1,7 +1,7 @@
-/// EngineBridge — Dart↔Rust 引擎桥接层（v0.0.3 FFI 模式）。
-///
-/// 通过 `dart:ffi` 调用 Rust justtalk-core 引擎的 C ABI 函数。
-/// 所有复杂类型通过 JSON 序列化跨 FFI 边界。
+// EngineBridge — Dart↔Rust 引擎桥接层（v0.0.3 FFI 模式）。
+//
+// 通过 `dart:ffi` 调用 Rust justtalk-core 引擎的 C ABI 函数。
+// 所有复杂类型通过 JSON 序列化跨 FFI 边界。
 
 import 'dart:async';
 import 'webrtc_adapter.dart';

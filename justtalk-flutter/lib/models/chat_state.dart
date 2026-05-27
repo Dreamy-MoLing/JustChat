@@ -1,9 +1,9 @@
-/// ChatState — UI 状态持有者（v0.0.3 重构）。
-///
-/// 所有 P2P 业务逻辑已迁移到 Rust justtalk-core 引擎。
-/// ChatState 只负责：持有 UI 数据、监听引擎事件、调用 notifyListeners。
-///
-/// 公开接口保持不变，确保 UI 页面无需修改。
+// ChatState — UI 状态持有者（v0.0.3 重构）。
+//
+// 所有 P2P 业务逻辑已迁移到 Rust justtalk-core 引擎。
+// ChatState 只负责：持有 UI 数据、监听引擎事件、调用 notifyListeners。
+//
+// 公开接口保持不变，确保 UI 页面无需修改。
 
 import 'dart:async';
 import 'package:flutter/foundation.dart';

@@ -48,7 +48,7 @@ jobs:
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze
+        run: dart analyze
 
       - name: Build APK (release, split per ABI)
         run: flutter build apk --release --split-per-abi
@@ -146,7 +146,7 @@ jobs:
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze
+        run: dart analyze
 
       - name: Build iOS (release, unsigned)
         run: flutter build ios --release --no-codesign

@@ -1,10 +1,10 @@
-/// WebRTC 适配器 — 薄层，只执行 flutter_webrtc 操作，零业务逻辑。
-///
-/// 监听 Rust 引擎的 WebrtcCommand stream，执行对应的 flutter_webrtc API，
-/// 完成后回调 engine.on_xxx()。
-///
-/// 这是 v0.0.3 架构中 Flutter 侧唯一的非 UI 代码，
-/// 且完全不含状态机、协议、配对等业务逻辑。
+// WebRTC 适配器 — 薄层，只执行 flutter_webrtc 操作，零业务逻辑。
+//
+// 监听 Rust 引擎的 WebrtcCommand stream，执行对应的 flutter_webrtc API，
+// 完成后回调 engine.on_xxx()。
+//
+// 这是 v0.0.3 架构中 Flutter 侧唯一的非 UI 代码，
+// 且完全不含状态机、协议、配对等业务逻辑。
 
 import 'dart:async';
 import 'package:flutter_webrtc/flutter_webrtc.dart';

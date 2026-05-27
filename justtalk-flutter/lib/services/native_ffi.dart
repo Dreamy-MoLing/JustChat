@@ -1,7 +1,7 @@
-/// Dart FFI 绑定 — 调用 Rust justtalk-core 引擎。
-///
-/// 使用 `dart:ffi` 加载 libjusttalk_core.so 并调用 C ABI 函数。
-/// 所有复杂类型通过 JSON 字符串序列化跨 FFI 边界。
+// Dart FFI 绑定 — 调用 Rust justtalk-core 引擎。
+//
+// 使用 `dart:ffi` 加载 libjusttalk_core.so 并调用 C ABI 函数。
+// 所有复杂类型通过 JSON 字符串序列化跨 FFI 边界。
 
 import 'dart:convert';
 import 'dart:ffi';

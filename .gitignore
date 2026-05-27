@@ -6,6 +6,7 @@ target/
 # Flutter
 justtalk-flutter/build/
 justtalk-flutter/.dart_tool/
+justtalk-flutter/native/
 justtalk-flutter/.flutter-plugins*
 justtalk-flutter/android/.gradle/
 justtalk-flutter/android/app/build/
@@ -30,13 +31,42 @@ justtalk-flutter/linux/flutter/generated_plugin_registrant*
 .DS_Store
 Thumbs.db
 
-# Local scripts
+# 本地脚本
 claude-run.sh
 
-# Claude
+# Claude Code
 .claude/settings.local.json
 .claude/worktrees/
+.playwright-mcp/
 
-#env
+# 环境变量和隐私文件
 .env
+.env.*
 env/
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+secrets.*
+credentials.*
+config.local.*
+settings.local.*
+
+# Markdown 文档（保留 README.md）
+*.md
+!README.md
+!justtalk-flutter/**/README.md
+
+# 调研笔记（本地参考，不提交）
+research/
+
+# 项目计划（本地参考，不提交）
+plan.md
+
+# 架构和规范文档（本地参考，不提交）
+ARCHITECTURE.md
+CODING_CONVENTIONS.md
+AGENTS.md
+CLAUDE.md
