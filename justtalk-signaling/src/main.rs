@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
+use std::time::Instant;
 
 use futures_util::{SinkExt, StreamExt};
 use parking_lot::RwLock;
@@ -29,6 +30,8 @@ struct PeerInfo {
 struct ConnectedPeer {
     info: PeerInfo,
     sender: mpsc::UnboundedSender<String>,
+    /// 最后活跃时间（用于空闲检测）
+    last_active: Instant,
 }
 
 /// Shared application state: maps peer_id to connected peer.
@@ -69,6 +72,9 @@ async fn main() {
 
     let state: State = Arc::new(RwLock::new(HashMap::new()));
 
+    // 克隆 state 用于心跳任务
+    let state_clone = state.clone();
+
     let state_filter = warp::any().map(move || state.clone());
 
     // GET /peers
@@ -89,6 +95,50 @@ async fn main() {
         .map(|ws: warp::ws::Ws, state| ws.on_upgrade(move |socket| handle_ws(socket, state)));
 
     let routes = peers.or(health).or(ws);
+
+    // 启动心跳和空闲检测任务
+    tokio::spawn(async move {
+        let mut heartbeat_interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        let mut cleanup_interval = tokio::time::interval(std::time::Duration::from_secs(30));
+
+        loop {
+            tokio::select! {
+                _ = heartbeat_interval.tick() => {
+                    let peers_snapshot: Vec<(String, mpsc::UnboundedSender<String>)> = {
+                        let state = state_clone.read();
+                        state.iter()
+                            .map(|(id, p)| (id.clone(), p.sender.clone()))
+                            .collect()
+                    };
+
+                    for (peer_id, sender) in peers_snapshot {
+                        let ping = serde_json::json!({"cmd": "ping"}).to_string();
+                        if sender.send(ping).is_err() {
+                            tracing::warn!("Failed to send ping to {}", peer_id);
+                        }
+                    }
+                }
+                _ = cleanup_interval.tick() => {
+                    let now = Instant::now();
+                    let stale_peers: Vec<String> = {
+                        let state = state_clone.read();
+                        state.iter()
+                            .filter(|(_, p)| now.duration_since(p.last_active) > std::time::Duration::from_secs(120))
+                            .map(|(id, _)| id.clone())
+                            .collect()
+                    };
+
+                    for peer_id in stale_peers {
+                        tracing::info!("Removing stale peer: {}", peer_id);
+                        if let Some(peer) = state_clone.write().remove(&peer_id) {
+                            drop(peer.sender);
+                        }
+                        broadcast(&state_clone, &peer_id, &serde_json::json!({"cmd": "peer_offline", "peer_id": peer_id}).to_string());
+                    }
+                }
+            }
+        }
+    });
 
     tracing::info!("signaling server listening on 0.0.0.0:3000");
     warp::serve(routes).run(([0, 0, 0, 0], 3000)).await;
@@ -171,6 +221,7 @@ async fn handle_ws(ws: WebSocket, state: State) {
         let mut state = state.write();
         // Remove any existing connection for the same peer_id.
         if let Some(old) = state.remove(&peer_id) {
+            tracing::info!("Peer {} reconnected, closing old connection", peer_id);
             drop(old.sender); // Close old channel.
         }
         state.insert(
@@ -182,6 +233,7 @@ async fn handle_ws(ws: WebSocket, state: State) {
                     display_name: None,
                 },
                 sender: tx,
+                last_active: Instant::now(),
             },
         );
     }
@@ -230,6 +282,14 @@ async fn handle_ws(ws: WebSocket, state: State) {
             Ok(t) => t,
             Err(_) => continue,
         };
+
+        // 更新最后活跃时间
+        {
+            let mut state = state.write();
+            if let Some(peer) = state.get_mut(&peer_id) {
+                peer.last_active = Instant::now();
+            }
+        }
 
         // Validate message size.
         if text.len() > 65536 {

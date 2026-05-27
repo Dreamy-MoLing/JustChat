@@ -1,8 +1,10 @@
 //! WebSocket 信令客户端 — 连接到 justtalk-signaling 服务器。
 //!
 //! 使用 tokio-tungstenite 实现，通过 channel 与引擎通信。
+//! 支持连接超时（10s）和心跳（30s）。
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use parking_lot::RwLock;
@@ -59,9 +61,14 @@ impl SignalingClient {
         self.disconnect();
 
         let url = ensure_ws_url(&self.config.server_url)?;
-        let (ws, _) = tokio_tungstenite::connect_async(&url)
-            .await
-            .map_err(|e| crate::Error::Network(format!("WebSocket 连接失败: {e}")))?;
+        // 连接超时 10s
+        let (ws, _) = tokio::time::timeout(
+            Duration::from_secs(10),
+            tokio_tungstenite::connect_async(&url),
+        )
+        .await
+        .map_err(|_| crate::Error::Network("连接超时 (10s)".into()))?
+        .map_err(|e| crate::Error::Network(format!("WebSocket 连接失败: {e}")))?;
 
         let (mut ws_write, mut ws_read) = ws.split();
 
@@ -93,21 +100,34 @@ impl SignalingClient {
         let event_tx_w = event_tx.clone();
         let event_tx_r = event_tx;
 
-        // 写循环
+        // 写循环（带心跳）
         tokio::spawn(async move {
-            while let Some(cmd) = cmd_rx.recv().await {
-                match cmd.to_json() {
-                    Ok(json) => {
-                        if json.len() > 65536 {
-                            tracing::warn!(target = %peer_id_w, "命令过大 ({})", json.len());
-                            continue;
-                        }
-                        if ws_write.send(Message::Text(json.into())).await.is_err() {
-                            break;
+            let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(30));
+            heartbeat_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+            loop {
+                tokio::select! {
+                    Some(cmd) = cmd_rx.recv() => {
+                        match cmd.to_json() {
+                            Ok(json) => {
+                                if json.len() > 65536 {
+                                    tracing::warn!(target = %peer_id_w, "命令过大 ({})", json.len());
+                                    continue;
+                                }
+                                if ws_write.send(Message::Text(json.into())).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!(target = %peer_id_w, "序列化命令失败: {e}");
+                            }
                         }
                     }
-                    Err(e) => {
-                        tracing::error!(target = %peer_id_w, "序列化命令失败: {e}");
+                    _ = heartbeat_interval.tick() => {
+                        let ping_msg = serde_json::json!({"cmd": "ping"}).to_string();
+                        if ws_write.send(Message::Text(ping_msg.into())).await.is_err() {
+                            break;
+                        }
                     }
                 }
             }

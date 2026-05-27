@@ -103,6 +103,12 @@ pub enum P2pEvent {
     },
     /// 信令连接中
     SignalingConnecting,
+    /// 信令已连接
+    SignalingConnected,
+    /// 信令已断开
+    SignalingDisconnected { reason: String },
+    /// 请求重连
+    ReconnectRequested,
 }
 
 /// WebRTC 连接阶段 —— 对应 UI 连接状态栏的展示。

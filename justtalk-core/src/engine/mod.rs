@@ -8,6 +8,7 @@
 pub mod peer_manager;
 pub mod state_machine;
 pub mod pairing_flow;
+pub mod peer_recovery;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -20,12 +21,15 @@ use crate::crypto::traits::MessageEncryptor;
 use crate::crypto::plain::PlainEncryptor;
 use crate::identity::keypair::KeyPair;
 use crate::network::signaling_client::{SignalingClient, SignalingEvent};
+use crate::network::reconnect_manager::{ReconnectManager, ReconnectAction};
+use crate::network::health_monitor::HealthMonitor;
 use crate::protocol::pairing::PairingCode;
 use crate::protocol::signaling::{SignalingCommand, SignalingMessage};
 use crate::protocol::webrtc_types::*;
 use crate::storage::{ContactStore, MessageStore, SettingsStore};
 
 use self::peer_manager::{IceCandidateData, PeerManager};
+use self::peer_recovery::PeerRecovery;
 use self::state_machine as sm;
 
 /// 引擎内部状态
@@ -38,6 +42,12 @@ struct EngineInner {
     signaling: SignalingClient,
     /// peer 状态管理
     peer_manager: PeerManager,
+    /// 重连管理器
+    reconnect_manager: ReconnectManager,
+    /// 心跳监控器
+    health_monitor: HealthMonitor,
+    /// P2P 恢复逻辑
+    peer_recovery: PeerRecovery,
     /// 加密器（v0.0.3 使用明文）
     encryptor: Box<dyn MessageEncryptor>,
     /// 存储
@@ -100,6 +110,9 @@ impl P2pEngine {
                     String::new(),
                 ),
                 peer_manager: PeerManager::new(),
+                reconnect_manager: ReconnectManager::new(),
+                health_monitor: HealthMonitor::new(),
+                peer_recovery: PeerRecovery::new(),
                 encryptor: Box::new(PlainEncryptor::default()),
                 message_store: MessageStore::new(storage_path.clone()),
                 contact_store: ContactStore::new(storage_path.clone()),
@@ -188,15 +201,22 @@ impl P2pEngine {
                 SignalingEvent::Connected => {
                     inner.signaling_connected = true;
                     inner.signaling_connecting = false;
+                    inner.reconnect_manager.on_connected();
+                    inner.health_monitor.on_connected();
+                    // 恢复 P2P 连接
+                    self.recover_peer_connections(inner);
                     self.emit_event_inner(inner, P2pEvent::SignalingStateChanged { connected: true });
                 }
                 SignalingEvent::Disconnected => {
                     inner.signaling_connected = false;
                     inner.signaling_connecting = false;
                     inner.signaling_event_rx = None;
+                    inner.health_monitor.on_disconnected();
+                    inner.reconnect_manager.on_disconnected();
                     self.emit_event_inner(inner, P2pEvent::SignalingStateChanged { connected: false });
                 }
                 SignalingEvent::Message(msg) => {
+                    inner.health_monitor.on_message_received();
                     self.handle_signaling_message_inner(inner, msg);
                 }
                 SignalingEvent::Error(e) => {
@@ -226,6 +246,18 @@ impl P2pEngine {
         }
     }
 
+    /// 信令重连后恢复所有活跃 peer 连接
+    fn recover_peer_connections(&self, inner: &mut EngineInner) {
+        let active_peers = inner.peer_manager.active_peer_ids();
+        if !active_peers.is_empty() {
+            tracing::info!("恢复 {} 个 peer 连接", active_peers.len());
+            let commands = inner.peer_recovery.recover_peers(active_peers);
+            for cmd in commands {
+                let _ = inner.signaling.send(cmd);
+            }
+        }
+    }
+
     // ══════════════════════════════════════════════════════════
     // 信令消息处理
     // ══════════════════════════════════════════════════════════
@@ -234,6 +266,9 @@ impl P2pEngine {
         match msg {
             SignalingMessage::Registered { .. } => {
                 // 已通过 SignalingEvent::Connected 处理
+            }
+            SignalingMessage::Pong => {
+                inner.health_monitor.on_pong_received();
             }
             SignalingMessage::PeerOnline { peer_id } => {
                 // 更新联系人在线状态
@@ -970,6 +1005,53 @@ impl P2pEngine {
 
     /// 处理引擎事件（应定期调用以处理信令消息）
     pub fn tick(&self) {
+        let mut inner = self.inner.write();
+
+        // 1. 检查重连
+        if let Some(action) = inner.reconnect_manager.tick() {
+            match action {
+                ReconnectAction::Connect => {
+                    // 异步重连需要通过事件驱动
+                    let url = inner.signaling_server.clone();
+                    let peer_id = inner.my_peer_id.clone();
+                    let pubkey = hex::encode(inner.key_pair.public_key_bytes());
+                    inner.signaling = SignalingClient::new(url, peer_id, pubkey);
+                    inner.signaling_connecting = true;
+                    self.emit_event_inner(&inner, P2pEvent::SignalingConnecting);
+                }
+                ReconnectAction::Wait => {}
+            }
+        }
+
+        // 2. 检查心跳
+        if inner.health_monitor.should_send_ping() {
+            let _ = inner.signaling.send(SignalingCommand::Ping);
+            inner.health_monitor.on_ping_sent();
+        }
+
+        // 3. 检查 pong 超时
+        if inner.health_monitor.is_pong_timeout() {
+            inner.health_monitor.on_disconnected();
+            inner.reconnect_manager.on_disconnected();
+            inner.signaling_connected = false;
+            inner.signaling_connecting = false;
+            inner.signaling_event_rx = None;
+            self.emit_event_inner(&inner, P2pEvent::SignalingStateChanged { connected: false });
+        }
+
+        // 4. 检查 peer 超时
+        let timed_out_peers = inner.peer_manager.check_timeouts();
+        for peer_id in timed_out_peers {
+            tracing::warn!(peer_id = %peer_id, "peer 连接超时");
+            inner.peer_manager.remove(&peer_id);
+            self.emit_event_inner(&inner, P2pEvent::ConnectionStateChanged {
+                peer_id,
+                connected: false,
+            });
+        }
+
+        // 5. 处理信令事件
+        drop(inner);
         self.poll_signaling_events();
     }
 
@@ -1015,5 +1097,67 @@ mod tests {
         let engine = P2pEngine::new(dir.path().to_path_buf());
         engine.set_display_name("舰长");
         assert_eq!(engine.display_name(), "舰长");
+    }
+
+    #[test]
+    fn test_reconnect_manager_integration() {
+        use crate::network::reconnect_manager::{ReconnectManager, ReconnectState, ReconnectAction};
+
+        let mut rm = ReconnectManager::new();
+
+        // 初始状态
+        assert_eq!(*rm.state(), ReconnectState::Idle);
+
+        // 连接成功
+        rm.on_connected();
+        assert_eq!(*rm.state(), ReconnectState::Connected);
+
+        // 断开
+        rm.on_disconnected();
+        assert!(matches!(rm.state(), ReconnectState::Reconnecting { .. }));
+
+        // 第一次重连
+        let action = rm.tick();
+        assert_eq!(action, Some(ReconnectAction::Connect));
+
+        // 重连失败
+        rm.on_connect_failed();
+        assert!(matches!(rm.state(), ReconnectState::Reconnecting { .. }));
+    }
+
+    #[test]
+    fn test_health_monitor_integration() {
+        use crate::network::health_monitor::HealthMonitor;
+
+        let mut hm = HealthMonitor::new();
+
+        // 连接
+        hm.on_connected();
+        assert!(hm.is_healthy());
+
+        // 发送 ping
+        hm.on_ping_sent();
+        assert!(hm.is_healthy()); // 还没超时
+
+        // 收到 pong
+        hm.on_pong_received();
+        assert!(hm.is_healthy());
+
+        // 断开
+        hm.on_disconnected();
+        assert!(!hm.is_healthy());
+    }
+
+    #[test]
+    fn test_peer_recovery_integration() {
+        use crate::engine::peer_recovery::PeerRecovery;
+
+        let recovery = PeerRecovery::new();
+        let peers = vec!["peer1".to_string(), "peer2".to_string()];
+        let commands = recovery.recover_peers(peers);
+        assert_eq!(commands.len(), 2);
+
+        let empty_commands = recovery.recover_peers(vec![]);
+        assert!(empty_commands.is_empty());
     }
 }
