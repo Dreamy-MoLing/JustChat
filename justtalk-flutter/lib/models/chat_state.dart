@@ -109,6 +109,9 @@ class ChatState extends ChangeNotifier {
   bool _autoConnect = false;
   String? _lastError;
   String? _pendingAnswerCode;
+  bool _isFirstLaunch = true;
+
+  bool get isFirstLaunch => _isFirstLaunch;
 
   /// 当有人扫码配对时回调（HomePage 设置此回调）
   void Function(String peerId, String displayName)? onPairedFromQr;
@@ -125,6 +128,7 @@ class ChatState extends ChangeNotifier {
   /// 初始化引擎（加载 Rust FFI 库）
   Future<void> init(String storagePath) async {
     await _engine.init(storagePath);
+    _isFirstLaunch = _engine.isFirstLaunch();
     // 定期轮询 Rust 引擎（每 100ms 拉取事件和命令）
     _pollTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
       _engine.tick();
@@ -262,6 +266,13 @@ class ChatState extends ChangeNotifier {
   void setSignalingServer(String url) {
     _signalingServer = url;
     _engine.setSignalingServerUrl(url);
+    notifyListeners();
+  }
+
+  void completeOnboarding(String displayName) {
+    _isFirstLaunch = false;
+    _engine.setDisplayName(displayName);
+    _engine.setFirstLaunchDone();
     notifyListeners();
   }
 
