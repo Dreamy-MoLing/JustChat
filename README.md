@@ -124,9 +124,3 @@ flutter build ios --release --no-codesign     # iOS
 | JTC1 | 手动 SDP 交换（降级） | `JTC1:` + base64(gzip(json)) |
 
 信令: JSON over WebSocket，支持 `register` / `pair_intent` / `connect_via_pair` / `sdp_offer` / `ice_candidate` / `ping`/`pong`。
-
-## 相关文档
-
-- [ARCHITECTURE.md](ARCHITECTURE.md) — 完整架构图、数据流、状态模型
-- [AGENTS.md](AGENTS.md) — AI 代理行为边界
-- [CODING_CONVENTIONS.md](CODING_CONVENTIONS.md) — 编码规范
