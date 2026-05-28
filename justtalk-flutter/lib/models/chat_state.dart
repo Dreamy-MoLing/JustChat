@@ -298,10 +298,6 @@ class ChatState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setMyPeerId(String id) {
-    notifyListeners();
-  }
-
   // ══════════════════════════════════════════════════════════
   // 委托给引擎的方法
   // ══════════════════════════════════════════════════════════
