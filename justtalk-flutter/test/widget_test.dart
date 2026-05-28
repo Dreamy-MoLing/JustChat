@@ -19,6 +19,7 @@ void main() {
         child: const JustChatApp(),
       ),
     );
-    expect(find.text('JustChat'), findsOneWidget);
+    // 首次启动显示 WelcomePage
+    expect(find.text('欢迎使用 JustChat'), findsOneWidget);
   });
 }
