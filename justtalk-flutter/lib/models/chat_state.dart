@@ -261,6 +261,7 @@ class ChatState extends ChangeNotifier {
 
   void setSignalingServer(String url) {
     _signalingServer = url;
+    _engine.setSignalingServerUrl(url);
     notifyListeners();
   }
 
