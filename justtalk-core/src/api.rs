@@ -172,3 +172,79 @@ fn b(params: Option<&serde_json::Value>, key: &str) -> bool {
 fn ok() -> serde_json::Value { serde_json::json!({"ok":true}) }
 fn err(msg: &str) -> serde_json::Value { serde_json::json!({"ok":false,"error":msg}) }
 fn e(msg: &str) -> serde_json::Value { err(msg) }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CString;
+
+    fn init_engine() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let path = CString::new(dir.path().to_str().unwrap()).unwrap();
+        let result_ptr = jt_engine_init(path.as_ptr());
+        assert!(!result_ptr.is_null());
+        let result = unsafe { CStr::from_ptr(result_ptr) }.to_str().unwrap();
+        let json: serde_json::Value = serde_json::from_str(result).unwrap();
+        assert_eq!(json["ok"], true);
+        assert!(json["peer_id"].as_str().is_some());
+        jt_free_string(result_ptr);
+        dir
+    }
+
+    fn call_json(cmd_str: &str) -> serde_json::Value {
+        let cmd = CString::new(cmd_str).unwrap();
+        let result_ptr = jt_call(cmd.as_ptr());
+        let result = unsafe { CStr::from_ptr(result_ptr) }.to_str().unwrap();
+        let json: serde_json::Value = serde_json::from_str(result).unwrap();
+        jt_free_string(result_ptr);
+        json
+    }
+
+    #[test]
+    fn engine_init_returns_valid_json() {
+        let _dir = init_engine();
+    }
+
+    #[test]
+    fn jt_call_get_contacts_returns_list() {
+        let _dir = init_engine();
+        let json = call_json(r#"{"method":"get_contacts","params":{}}"#);
+        assert_eq!(json["ok"], true);
+        assert!(json["data"]["contacts"].is_array());
+    }
+
+    #[test]
+    fn jt_call_unknown_method_returns_error() {
+        let _dir = init_engine();
+        let json = call_json(r#"{"method":"nonexistent","params":{}}"#);
+        assert_eq!(json["ok"], false);
+        assert!(json["error"].as_str().is_some());
+    }
+
+    #[test]
+    fn jt_call_invalid_json_returns_error() {
+        let _dir = init_engine();
+        let json = call_json("not json");
+        assert_eq!(json["ok"], false);
+    }
+
+    #[test]
+    fn jt_poll_events_returns_empty_when_no_events() {
+        let _dir = init_engine();
+        let result_ptr = jt_poll_events();
+        let result = unsafe { CStr::from_ptr(result_ptr) }.to_str().unwrap();
+        let json: serde_json::Value = serde_json::from_str(result).unwrap();
+        assert!(json.as_array().unwrap().is_empty());
+        jt_free_string(result_ptr);
+    }
+
+    #[test]
+    fn jt_poll_commands_returns_empty_when_no_commands() {
+        let _dir = init_engine();
+        let result_ptr = jt_poll_commands();
+        let result = unsafe { CStr::from_ptr(result_ptr) }.to_str().unwrap();
+        let json: serde_json::Value = serde_json::from_str(result).unwrap();
+        assert!(json.as_array().unwrap().is_empty());
+        jt_free_string(result_ptr);
+    }
+}
