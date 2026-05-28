@@ -55,10 +55,11 @@ credentials.*
 config.local.*
 settings.local.*
 
-# Markdown 文档（保留 README.md）
+# Markdown 文档（保留 README.md 和设计文档）
 *.md
 !README.md
 !justtalk-flutter/**/README.md
+!docs/**/*.md
 
 # 调研笔记（本地参考，不提交）
 research/
