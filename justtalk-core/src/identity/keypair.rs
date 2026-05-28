@@ -53,3 +53,47 @@ impl KeyPair {
         Ok(Self { signing_key })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generate_produces_valid_keypair() {
+        let kp = KeyPair::generate();
+        assert!(!kp.peer_id().is_empty());
+        assert_eq!(kp.peer_id().len(), 64); // hex-encoded 32 bytes
+    }
+
+    #[test]
+    fn sign_and_verify_roundtrip() {
+        let kp = KeyPair::generate();
+        let message = b"hello justchat";
+        let signature = kp.sign(message);
+        assert!(KeyPair::verify(&kp.public_key_bytes(), message, &signature).is_ok());
+    }
+
+    #[test]
+    fn verify_rejects_wrong_message() {
+        let kp = KeyPair::generate();
+        let message = b"hello";
+        let signature = kp.sign(message);
+        assert!(KeyPair::verify(&kp.public_key_bytes(), b"tampered", &signature).is_err());
+    }
+
+    #[test]
+    fn verify_rejects_wrong_key() {
+        let kp1 = KeyPair::generate();
+        let kp2 = KeyPair::generate();
+        let signature = kp1.sign(b"test");
+        assert!(KeyPair::verify(&kp2.public_key_bytes(), b"test", &signature).is_err());
+    }
+
+    #[test]
+    fn from_secret_key_bytes_roundtrip() {
+        let kp1 = KeyPair::generate();
+        let secret = kp1.signing_key.to_bytes();
+        let kp2 = KeyPair::from_secret_key_bytes(&secret).unwrap();
+        assert_eq!(kp1.peer_id(), kp2.peer_id());
+    }
+}
