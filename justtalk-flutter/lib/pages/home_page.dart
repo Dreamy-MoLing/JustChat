@@ -12,6 +12,7 @@ import 'info_page.dart';
 import 'notifications_page.dart';
 import 'qr_scanner_page.dart';
 import 'settings_page.dart';
+import 'answer_qr_page.dart';
 import 'widgets/contact_card.dart';
 import 'widgets/qr_countdown.dart';
 
@@ -297,16 +298,34 @@ class _HomePageState extends State<HomePage> {
     if (result != null && mounted) {
       final state = context.read<ChatState>();
       try {
-        await state.handleConnectionCode(result);
-        if (mounted && state.pendingAnswerCode != null) {
-          _showAnswerQrCode(state.pendingAnswerCode!);
-        } else if (mounted && result.startsWith('JTC2:')) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('好友已添加，正在连接...')),
-          );
-          if (mounted && state.activeContactId.isNotEmpty) {
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const ChatPage()));
+        if (result.startsWith('JTC1:')) {
+          // JTC1：生成应答码并展示
+          _showLoadingDialog('正在生成应答码...');
+          final answerCode = await state.generateJtc1Answer(result);
+          if (mounted) Navigator.pop(context); // 关 loading
+          if (answerCode != null && mounted) {
+            Navigator.push(context, MaterialPageRoute(
+              builder: (_) => AnswerQrPage(
+                answerCode: answerCode,
+                peerDisplayName: '对方',
+              ),
+            ));
+          } else if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('应答码生成失败，请重试')),
+            );
+          }
+        } else {
+          // JTC2：原有流程
+          await state.handleConnectionCode(result);
+          if (mounted && result.startsWith('JTC2:')) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('好友已添加，正在连接...')),
+            );
+            if (mounted && state.activeContactId.isNotEmpty) {
+              Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const ChatPage()));
+            }
           }
         }
       } on PairingCodeExpiredException catch (e) {
@@ -319,87 +338,31 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // ══════════════════════════════════════════════════════════════════════
-  // Show answer QR code (after scanning an offer)
-  // ══════════════════════════════════════════════════════════════════════
-
-  void _showAnswerQrCode(String answerCode) {
+  void _showLoadingDialog(String message) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-        title: const Text('已连接！'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.check_circle, color: Color(0xFF22C55E), size: 64),
-            const SizedBox(height: 12),
-            const Text('连接成功，可以开始聊天了！', style: TextStyle(fontSize: 14)),
-            const SizedBox(height: 16),
-            const Text('让对方扫描此应答码以完成连接：',
-                style: TextStyle(fontSize: 12, color: Colors.grey)),
-            const SizedBox(height: 8),
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.zero,
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: QrImageView(
-                  data: answerCode,
-                  version: QrVersions.auto,
-                  size: 180,
-                  eyeStyle: const QrEyeStyle(
-                    eyeShape: QrEyeShape.square,
-                    color: JustChatApp.teal,
-                  ),
-                  dataModuleStyle: const QrDataModuleStyle(
-                    dataModuleShape: QrDataModuleShape.square,
-                    color: JustChatApp.teal,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
+      barrierDismissible: false,
+      builder: (_) => Center(
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: answerCode));
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        const SnackBar(content: Text('应答码已复制')),
-                      );
-                    },
-                    icon: const Icon(Icons.copy, size: 16),
-                    label: const Text('复制应答码'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => Share.share(answerCode),
-                    icon: const Icon(Icons.share, size: 16),
-                    label: const Text('分享'),
-                  ),
-                ),
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                Text(message),
               ],
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              context.read<ChatState>().clearPendingAnswer();
-            },
-            child: const Text('完成'),
           ),
-        ],
+        ),
       ),
     );
   }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Show answer QR code (after scanning an offer)
+  // ══════════════════════════════════════════════════════════════════════
 
   // ══════════════════════════════════════════════════════════════════════
   // Share connection code via system share
@@ -972,7 +935,7 @@ class _HomePageState extends State<HomePage> {
                 child: const Icon(Icons.camera_alt_rounded, color: JustChatApp.teal),
               ),
               title: const Text('扫码连接'),
-              subtitle: const Text('扫描对方的二维码', style: TextStyle(fontSize: 12)),
+              subtitle: const Text('面对面互相扫码', style: TextStyle(fontSize: 12)),
               onTap: () {
                 Navigator.pop(ctx);
                 _openScanner();
@@ -985,59 +948,26 @@ class _HomePageState extends State<HomePage> {
                   color: JustChatApp.teal.withAlpha(20),
                   borderRadius: BorderRadius.zero,
                 ),
-                child: const Icon(Icons.qr_code_rounded, color: JustChatApp.teal),
-              ),
-              title: const Text('我的二维码'),
-              subtitle: const Text('展示二维码让对方扫我', style: TextStyle(fontSize: 12)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _showMyQrCode();
-              },
-            ),
-            ListTile(
-              leading: Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(
-                  color: JustChatApp.teal.withAlpha(20),
-                  borderRadius: BorderRadius.zero,
-                ),
-                child: const Icon(Icons.share_rounded, color: JustChatApp.teal),
-              ),
-              title: const Text('分享连接码'),
-              subtitle: const Text('通过微信/QQ发送给对方', style: TextStyle(fontSize: 12)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _shareConnectionCode();
-              },
-            ),
-            ListTile(
-              leading: Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(
-                  color: JustChatApp.teal.withAlpha(20),
-                  borderRadius: BorderRadius.zero,
-                ),
                 child: const Icon(Icons.paste_rounded, color: JustChatApp.teal),
               ),
               title: const Text('粘贴连接码'),
-              subtitle: const Text('手动粘贴对方发来的连接码/应答码', style: TextStyle(fontSize: 12)),
+              subtitle: const Text('远程时通过微信等粘贴', style: TextStyle(fontSize: 12)),
               onTap: () {
                 Navigator.pop(ctx);
                 _showPasteCodeDialog();
               },
             ),
-            const Divider(indent: 16, endIndent: 16),
             ListTile(
               leading: Container(
                 width: 40, height: 40,
                 decoration: BoxDecoration(
-                  color: JustChatApp.creamDark.withAlpha(100),
+                  color: JustChatApp.teal.withAlpha(20),
                   borderRadius: BorderRadius.zero,
                 ),
                 child: const Icon(Icons.person_add_rounded, color: JustChatApp.teal),
               ),
-              title: const Text('添加联系人'),
-              subtitle: const Text('手动输入 Peer ID', style: TextStyle(fontSize: 12)),
+              title: const Text('手动添加联系人'),
+              subtitle: const Text('输入对方 Peer ID', style: TextStyle(fontSize: 12)),
               onTap: () {
                 Navigator.pop(ctx);
                 _showAddContactDialog();

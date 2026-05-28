@@ -84,6 +84,8 @@ struct EngineInner {
     pending_manual_peer_id: Option<String>,
     /// JTC1：等待出示的应答码
     pending_answer_code: Option<String>,
+    /// JTC1：answer 侧暂存的 SDP
+    pending_answer_sdp: Option<String>,
     /// JTC2：被扫码方的回调 peer ID
     on_paired_from_qr: Option<String>,
 }
@@ -133,6 +135,7 @@ impl P2pEngine {
                 last_error: None,
                 pending_manual_peer_id: None,
                 pending_answer_code: None,
+                pending_answer_sdp: None,
                 on_paired_from_qr: None,
             })),
         };
@@ -432,6 +435,10 @@ impl P2pEngine {
                 let cmds = sm::on_answer_local_desc(peer_id, sdp);
                 self.emit_cmds_inner(&inner, cmds);
                 inner.peer_manager.set_phase(peer_id, ConnectionPhase::IceGathering);
+                // JTC1 手动模式：暂存 answer SDP，ICE 收集完成后自动编码
+                if inner.pending_manual_peer_id.as_deref() == Some(peer_id) {
+                    inner.pending_answer_sdp = Some(sdp.to_string());
+                }
             }
             _ => {}
         }
@@ -488,8 +495,28 @@ impl P2pEngine {
             phase: ConnectionPhase::Exchanging,
         });
 
-        // 信令模式：ICE 收集完成后，引擎已在之前通过 signaling_client 发送 SDP
-        // （在 on_local_description 中已发送）
+        // JTC1 手动模式：ICE 收集完成后自动编码应答码
+        if inner.pending_manual_peer_id.as_deref() == Some(peer_id) {
+            if let Some(sdp_str) = inner.pending_answer_sdp.take() {
+                if let Ok(sdp_val) = serde_json::from_str::<serde_json::Value>(&sdp_str) {
+                    let candidates: Vec<serde_json::Value> = inner
+                        .peer_manager
+                        .take_manual_ice(peer_id)
+                        .iter()
+                        .map(|c| {
+                            serde_json::json!({
+                                "candidate": c.candidate,
+                                "sdpMid": c.sdp_mid,
+                                "sdpMLineIndex": c.sdp_m_line_index,
+                            })
+                        })
+                        .collect();
+                    if let Ok(answer) = pairing_flow::encode_jtc1_answer(sdp_val, candidates) {
+                        inner.pending_answer_code = Some(answer);
+                    }
+                }
+            }
+        }
     }
 
     /// Dart 报告 DataChannel 已打开
@@ -916,6 +943,15 @@ impl P2pEngine {
         self.emit_cmds_inner(&inner, cmds);
 
         Ok(peer_id) // 返回临时 peer_id
+    }
+
+    /// 获取已自动编码的 JTC1 应答码（ICE 收集完成后自动填充）
+    pub fn encode_jtc1_answer_with_pending(&self, _peer_id: &str) -> crate::Result<String> {
+        let inner = self.inner.read();
+        inner
+            .pending_answer_code
+            .clone()
+            .ok_or_else(|| crate::Error::Protocol("应答码尚未就绪，ICE 收集中".into()))
     }
 
     /// 编码 JTC1 answer（在 answer 侧 ICE 收集完成后调用）

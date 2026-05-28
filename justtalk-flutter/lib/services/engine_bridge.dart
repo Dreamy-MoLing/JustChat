@@ -213,6 +213,18 @@ class EngineBridge {
     }
   }
 
+  /// 接受 JTC1 连接码（answer 侧）
+  String? acceptConnectionCode(String code) {
+    final result = _native.call('accept_connection_code', {'code': code});
+    return result['data']?['peer_id'] as String?;
+  }
+
+  /// 获取已编码的 JTC1 应答码
+  String? encodeJtc1Answer(String peerId) {
+    final result = _native.call('encode_jtc1_answer', {'peer_id': peerId});
+    return result['data']?['code'] as String?;
+  }
+
   // ══════════════════════════════════════════════════════════
   // 事件轮询 — 定期调用
   // ══════════════════════════════════════════════════════════

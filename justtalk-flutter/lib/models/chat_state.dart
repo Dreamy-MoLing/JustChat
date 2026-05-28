@@ -269,6 +269,22 @@ class ChatState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 处理 JTC1 offer 并生成应答码
+  Future<String?> generateJtc1Answer(String code) async {
+    final peerId = _engine.acceptConnectionCode(code);
+    if (peerId == null) return null;
+
+    // 等待 ICE 收集完成（引擎会自动编码应答码）
+    for (int i = 0; i < 30; i++) {
+      await Future.delayed(const Duration(milliseconds: 200));
+      final answer = _engine.encodeJtc1Answer(peerId);
+      if (answer != null) return answer;
+    }
+    _lastError = 'JTC1 应答码生成超时';
+    notifyListeners();
+    return null;
+  }
+
   void completeOnboarding(String displayName) {
     _isFirstLaunch = false;
     _engine.setDisplayName(displayName);

@@ -111,6 +111,20 @@ fn dispatch(method: &str, params: Option<&serde_json::Value>) -> serde_json::Val
                 Ok(()) => ok(), Err(ee) => err(&ee.to_string()),
             }
         }
+        "accept_connection_code" => {
+            let code = s(params, "code");
+            match eng.accept_connection_code(code) {
+                Ok(peer_id) => serde_json::json!({"ok":true,"data":{"peer_id":peer_id}}),
+                Err(e) => err(&e.to_string()),
+            }
+        }
+        "encode_jtc1_answer" => {
+            let peer_id = s(params, "peer_id");
+            match eng.encode_jtc1_answer_with_pending(peer_id) {
+                Ok(code) => serde_json::json!({"ok":true,"data":{"code":code}}),
+                Err(e) => err(&e.to_string()),
+            }
+        }
         "add_contact" => { eng.add_contact(s(params,"peer_id"), s(params,"display_name")); ok() }
         "remove_contact" => { eng.remove_contact(s(params,"peer_id")); ok() }
         "get_contacts" => serde_json::json!({"ok":true,"data":{"contacts":eng.get_contacts()}}),
