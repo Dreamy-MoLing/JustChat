@@ -5,6 +5,7 @@
 //! - `take_events()` → Dart UI 更新状态
 //! - `on_*()` 方法 → Dart 回调引擎
 
+pub mod code_router;
 pub mod peer_manager;
 pub mod state_machine;
 pub mod pairing_flow;
@@ -966,40 +967,35 @@ impl P2pEngine {
 
     /// 统一入口：处理从深链接/粘贴的连接码
     pub fn handle_connection_code(&self, code: &str) -> crate::Result<()> {
-        if code.starts_with("JTC2:") {
-            // JTC2 异步处理（需要可能切换信令服务器）
-            // Dart 侧应调用 accept_pairing_code(code) async
-            return Err(crate::Error::Protocol(
+        let code_type = code_router::detect_code_type(code);
+        match code_type {
+            code_router::CodeType::Jtc2 => Err(crate::Error::Protocol(
                 "JTC2 配对码需异步处理，请调用 accept_pairing_code".into(),
-            ));
+            )),
+            code_router::CodeType::Jtc1 => self.handle_jtc1_code(code),
+            code_router::CodeType::Unknown => Err(crate::Error::Protocol("无效的连接码格式".into())),
         }
-        if code.starts_with("JTC1:") {
-            // JTC1 解码并处理
-            let data = pairing_flow::decode_jtc1(code)?;
-            let sdp_type = data
-                .sdp
-                .get("type")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+    }
 
-            if sdp_type == "offer" {
-                self.accept_connection_code(code)?;
-            } else if sdp_type == "answer" {
-                let peer_id = {
-                    let inner = self.inner.read();
-                    inner.pending_manual_peer_id.clone()
-                };
-                if let Some(pid) = peer_id {
-                    self.accept_answer_code(&pid, code)?;
-                } else {
-                    return Err(crate::Error::Protocol(
-                        "没有等待中的连接".into(),
-                    ));
-                }
+    /// 处理 JTC1 连接码（offer 或 answer）
+    fn handle_jtc1_code(&self, code: &str) -> crate::Result<()> {
+        let data = pairing_flow::decode_jtc1(code)?;
+        let sdp_type = data.sdp.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+        if sdp_type == "offer" {
+            self.accept_connection_code(code)?;
+        } else if sdp_type == "answer" {
+            let peer_id = {
+                let inner = self.inner.read();
+                inner.pending_manual_peer_id.clone()
+            };
+            if let Some(pid) = peer_id {
+                self.accept_answer_code(&pid, code)?;
+            } else {
+                return Err(crate::Error::Protocol("没有等待中的连接".into()));
             }
-            return Ok(());
         }
-        Err(crate::Error::Protocol("无效的连接码格式".into()))
+        Ok(())
     }
 
     /// 处理引擎事件（应定期调用以处理信令消息）
