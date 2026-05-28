@@ -21,11 +21,13 @@ class _QrCountdownState extends State<QrCountdown> {
     _remaining = PairingCode.expirySeconds -
         DateTime.now().difference(widget.createdAt).inSeconds;
     if (_remaining > 0) {
-      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-        setState(() {
-          _remaining = PairingCode.expirySeconds -
-              DateTime.now().difference(widget.createdAt).inSeconds;
-        });
+      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        final newRemaining = PairingCode.expirySeconds -
+            DateTime.now().difference(widget.createdAt).inSeconds;
+        if (newRemaining <= 0) {
+          timer.cancel();
+        }
+        setState(() { _remaining = newRemaining; });
       });
     }
   }

@@ -664,7 +664,7 @@ class _HomePageState extends State<HomePage> {
                 const ListTile(
                   leading: Icon(Icons.code_rounded, color: JustChatApp.teal),
                   title: Text('关于 JustChat', style: TextStyle(fontSize: 14)),
-                  subtitle: Text('v0.1.0 · P2P 聊天', style: TextStyle(fontSize: 11)),
+                  subtitle: Text('v0.0.4 · P2P 聊天', style: TextStyle(fontSize: 11)),
                 ),
               ],
             ),

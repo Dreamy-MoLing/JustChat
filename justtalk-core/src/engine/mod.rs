@@ -994,6 +994,10 @@ impl P2pEngine {
             } else {
                 return Err(crate::Error::Protocol("没有等待中的连接".into()));
             }
+        } else {
+            return Err(crate::Error::Protocol(
+                format!("不支持的 SDP 类型: {sdp_type}").into(),
+            ));
         }
         Ok(())
     }
