@@ -1,7 +1,7 @@
 name: justchat
 description: "JustChat — simple P2P chat"
 publish_to: 'none'
-version: 0.0.3
+version: 0.1.0
 
 environment:
   sdk: ^3.9.0
