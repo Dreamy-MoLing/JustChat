@@ -195,6 +195,24 @@ class EngineBridge {
     }
   }
 
+  /// 检查是否首次启动
+  bool isFirstLaunch() {
+    if (!_initialized) return true;
+    try {
+      final result = _native.call('get_settings', {'key': 'firstLaunchDone'});
+      return result['data']?['value'] != 'true';
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// 标记首次启动完成
+  void setFirstLaunchDone() {
+    if (_initialized) {
+      _native.call('set_settings', {'key': 'firstLaunchDone', 'value': 'true'});
+    }
+  }
+
   // ══════════════════════════════════════════════════════════
   // 事件轮询 — 定期调用
   // ══════════════════════════════════════════════════════════

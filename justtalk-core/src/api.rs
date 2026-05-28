@@ -127,6 +127,19 @@ fn dispatch(method: &str, params: Option<&serde_json::Value>) -> serde_json::Val
         "set_active_contact" => { eng.set_active_contact(s(params,"peer_id")); ok() }
         "set_auto_connect" => { eng.set_auto_connect(b(params,"enabled")); ok() }
         "set_notifications_enabled" => { eng.set_notifications_enabled(b(params,"enabled")); ok() }
+        "get_settings" => {
+            let key = s(params, "key");
+            match eng.get_setting(key) {
+                Some(val) => serde_json::json!({"ok":true,"data":{"value":val}}),
+                None => serde_json::json!({"ok":true,"data":{"value":null}}),
+            }
+        }
+        "set_settings" => {
+            let key = s(params, "key");
+            let value = s(params, "value");
+            eng.set_setting(key, value);
+            ok()
+        }
         "tick" => { eng.tick(); ok() }
         "on_peer_connection_created" => {
             eng.on_peer_connection_created(s(params,"peer_id"), b(params,"is_offer_side")); ok()

@@ -798,6 +798,18 @@ impl P2pEngine {
             .set("notificationsEnabled", &enabled.to_string());
     }
 
+    /// 读取通用设置
+    pub fn get_setting(&self, key: &str) -> Option<String> {
+        let inner = self.inner.read();
+        inner.settings_store.get(key).ok().flatten()
+    }
+
+    /// 写入通用设置
+    pub fn set_setting(&self, key: &str, value: &str) {
+        let inner = self.inner.read();
+        let _ = inner.settings_store.set(key, value);
+    }
+
     // ══════════════════════════════════════════════════════════
     // Getters
     // ══════════════════════════════════════════════════════════
