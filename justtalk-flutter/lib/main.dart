@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'models/chat_state.dart';
 import 'models/notification_state.dart';
 import 'pages/home_page.dart';
+import 'pages/welcome_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -164,7 +165,10 @@ class JustChatApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const HomePage(),
+      home: Consumer<ChatState>(
+        builder: (context, state, _) =>
+            state.isFirstLaunch ? const WelcomePage() : const HomePage(),
+      ),
     );
   }
 }
