@@ -300,7 +300,6 @@ impl P2pEngine {
             }
             SignalingMessage::PairConnect { from_id, display_name } => {
                 // 被扫码方：有人扫码配对，创建联系人
-                let display_name = display_name; // 不可变绑定
                 if !inner.contacts.iter().any(|c| c.peer_id == from_id) {
                     let contact = ContactData {
                         peer_id: from_id.clone(),

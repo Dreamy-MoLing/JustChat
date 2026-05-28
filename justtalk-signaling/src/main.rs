@@ -55,17 +55,6 @@ impl<T: Serialize> ApiResponse<T> {
     }
 }
 
-impl ApiResponse<()> {
-    #[allow(dead_code)]
-    fn error(code: u16, message: impl Into<String>) -> Self {
-        Self {
-            code,
-            data: None,
-            message: message.into(),
-        }
-    }
-}
-
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();

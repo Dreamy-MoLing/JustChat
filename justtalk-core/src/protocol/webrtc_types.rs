@@ -56,10 +56,6 @@ pub enum WebrtcCommand {
         peer_id: String,
         data: String,
     },
-    /// 创建 offer 侧 PeerConnection 并设置 onDataChannel 监听
-    SetupOfferSide {
-        peer_id: String,
-    },
     /// 关闭 PeerConnection
     ClosePeerConnection { peer_id: String },
 }

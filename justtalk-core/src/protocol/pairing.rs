@@ -13,22 +13,6 @@
 use base64::{engine::general_purpose::URL_SAFE as BASE64_URL, Engine};
 use serde::{Deserialize, Serialize};
 
-/// 配对码过期异常
-#[derive(Debug, Clone)]
-pub struct PairingCodeExpired {
-    pub elapsed_seconds: i64,
-}
-
-impl std::fmt::Display for PairingCodeExpired {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "二维码已过期（已过 {} 秒），请刷新后重试",
-            self.elapsed_seconds
-        )
-    }
-}
-
 /// JTC2 配对码。
 ///
 /// 5 分钟有效期，扫码端校验。
