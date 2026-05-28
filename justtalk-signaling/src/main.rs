@@ -64,27 +64,6 @@ async fn main() {
     // 克隆 state 用于心跳任务
     let state_clone = state.clone();
 
-    let state_filter = warp::any().map(move || state.clone());
-
-    // GET /peers
-    let peers = warp::get()
-        .and(warp::path("peers"))
-        .and(state_filter.clone())
-        .and_then(handle_peers);
-
-    // GET /health
-    let health = warp::get()
-        .and(warp::path("health"))
-        .map(|| warp::reply::json(&ApiResponse::ok("healthy")));
-
-    // WS /ws
-    let ws = warp::path("ws")
-        .and(warp::ws())
-        .and(state_filter.clone())
-        .map(|ws: warp::ws::Ws, state| ws.on_upgrade(move |socket| handle_ws(socket, state)));
-
-    let routes = peers.or(health).or(ws);
-
     // 启动心跳和空闲检测任务
     tokio::spawn(async move {
         let mut heartbeat_interval = tokio::time::interval(std::time::Duration::from_secs(60));
@@ -130,7 +109,7 @@ async fn main() {
     });
 
     tracing::info!("signaling server listening on 0.0.0.0:3000");
-    warp::serve(routes).run(([0, 0, 0, 0], 3000)).await;
+    warp::serve(routes_with_state(state)).run(([0, 0, 0, 0], 3000)).await;
 }
 
 async fn handle_peers(state: State) -> Result<impl warp::Reply, Infallible> {
@@ -454,5 +433,82 @@ fn broadcast(state: &State, sender_id: &str, msg: &str) {
         if id != sender_id {
             let _ = peer.sender.send(msg.to_string());
         }
+    }
+}
+
+/// 构建路由（可测试）
+fn routes_with_state(state: State) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    let state_filter = warp::any().map(move || state.clone());
+
+    let peers = warp::get()
+        .and(warp::path("peers"))
+        .and(state_filter.clone())
+        .and_then(handle_peers);
+
+    let health = warp::get()
+        .and(warp::path("health"))
+        .map(|| warp::reply::json(&ApiResponse::ok("healthy")));
+
+    let ws = warp::path("ws")
+        .and(warp::ws())
+        .and(state_filter)
+        .map(|ws: warp::ws::Ws, state| ws.on_upgrade(move |socket| handle_ws(socket, state)));
+
+    peers.or(health).or(ws)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn health_endpoint_returns_ok() {
+        let state: State = Arc::new(RwLock::new(HashMap::new()));
+        let filter = routes_with_state(state);
+        let resp = warp::test::request()
+            .path("/health")
+            .reply(&filter)
+            .await;
+        assert_eq!(resp.status(), 200);
+        let body: serde_json::Value = serde_json::from_slice(resp.body()).unwrap();
+        assert_eq!(body["code"], 200);
+        assert_eq!(body["data"], "healthy");
+    }
+
+    #[tokio::test]
+    async fn peers_endpoint_returns_empty_list() {
+        let state: State = Arc::new(RwLock::new(HashMap::new()));
+        let filter = routes_with_state(state);
+        let resp = warp::test::request()
+            .path("/peers")
+            .reply(&filter)
+            .await;
+        assert_eq!(resp.status(), 200);
+        let body: serde_json::Value = serde_json::from_slice(resp.body()).unwrap();
+        assert_eq!(body["code"], 200);
+        assert!(body["data"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn peer_info_serializes_correctly() {
+        let peer = PeerInfo {
+            peer_id: "abc123".into(),
+            pubkey: "deadbeef".into(),
+            display_name: Some("Alice".into()),
+        };
+        let json = serde_json::to_value(&peer).unwrap();
+        assert_eq!(json["peer_id"], "abc123");
+        assert_eq!(json["display_name"], "Alice");
+    }
+
+    #[test]
+    fn peer_info_omits_none_display_name() {
+        let peer = PeerInfo {
+            peer_id: "abc123".into(),
+            pubkey: "deadbeef".into(),
+            display_name: None,
+        };
+        let json = serde_json::to_value(&peer).unwrap();
+        assert!(json.get("display_name").is_none());
     }
 }
