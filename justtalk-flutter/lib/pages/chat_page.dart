@@ -75,7 +75,7 @@ class _ChatPageState extends State<ChatPage> {
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
                           color: JustChatApp.cream.withAlpha(150),
-                          borderRadius: BorderRadius.circular(0),
+                          borderRadius: BorderRadius.circular(16),
                         ),
                         child: Icon(Icons.chat_rounded,
                             size: 48, color: JustChatApp.teal.withAlpha(100)),
@@ -129,7 +129,7 @@ class _ChatPageState extends State<ChatPage> {
               height: 32,
               decoration: BoxDecoration(
                 color: Colors.white.withAlpha(50),
-                borderRadius: BorderRadius.circular(0),
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Center(
                 child: Text(
@@ -315,7 +315,7 @@ class _ChatPageState extends State<ChatPage> {
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                   colors: [JustChatApp.teal, JustChatApp.tealLight]),
-              borderRadius: BorderRadius.circular(0),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: Center(
               child: Text(contact.initials,
@@ -414,7 +414,7 @@ class _ChatPageState extends State<ChatPage> {
                         Colors.grey.shade300,
                       ],
                     ),
-              borderRadius: BorderRadius.circular(0),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: IconButton(
               icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
@@ -455,10 +455,10 @@ class _MessageBubble extends StatelessWidget {
               : null,
           color: isMine ? null : Colors.white,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(0),
-            topRight: const Radius.circular(0),
-            bottomLeft: isMine ? const Radius.circular(0) : const Radius.circular(0),
-            bottomRight: isMine ? const Radius.circular(0) : const Radius.circular(0),
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: isMine ? const Radius.circular(16) : const Radius.circular(4),
+            bottomRight: isMine ? const Radius.circular(4) : const Radius.circular(16),
           ),
         ),
         child: Column(
