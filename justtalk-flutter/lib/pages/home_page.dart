@@ -49,7 +49,7 @@ class _HomePageState extends State<HomePage> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.zero,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(
@@ -169,7 +169,7 @@ class _HomePageState extends State<HomePage> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, dialogSetState) {
           return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             title: Row(
               children: [
                 const Text('我的二维码'),
@@ -188,7 +188,7 @@ class _HomePageState extends State<HomePage> {
                   Card(
                     color: JustChatApp.cream.withAlpha(80),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.zero,
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -209,7 +209,7 @@ class _HomePageState extends State<HomePage> {
                   Card(
                     elevation: 2,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.zero,
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -395,7 +395,7 @@ class _HomePageState extends State<HomePage> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) {
           return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             title: const Text('粘贴连接码'),
             content: SizedBox(
               width: double.maxFinite,
@@ -414,7 +414,7 @@ class _HomePageState extends State<HomePage> {
                         const SizedBox(height: 8),
                         Card(
                           elevation: 1,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           child: Padding(
                             padding: const EdgeInsets.all(12),
                             child: SelectableText(
@@ -739,7 +739,7 @@ class _HomePageState extends State<HomePage> {
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
               color: Colors.red,
-              borderRadius: BorderRadius.zero,
+              borderRadius: BorderRadius.circular(16),
             ),
             child: const Icon(Icons.delete_rounded, color: Colors.white),
           ),
@@ -768,7 +768,7 @@ class _HomePageState extends State<HomePage> {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.zero,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) {
         final bottomPad = MediaQuery.of(ctx).padding.bottom;
@@ -784,7 +784,7 @@ class _HomePageState extends State<HomePage> {
                 width: 40, height: 4,
                 decoration: BoxDecoration(
                   color: Colors.grey.withAlpha(100),
-                  borderRadius: BorderRadius.zero,
+                  borderRadius: BorderRadius.circular(4),
                 ),
               ),
             ),
@@ -798,7 +798,7 @@ class _HomePageState extends State<HomePage> {
                 width: 40, height: 40,
                 decoration: BoxDecoration(
                   color: JustChatApp.teal.withAlpha(20),
-                  borderRadius: BorderRadius.zero,
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Icon(Icons.camera_alt_rounded, color: JustChatApp.teal),
               ),
@@ -814,7 +814,7 @@ class _HomePageState extends State<HomePage> {
                 width: 40, height: 40,
                 decoration: BoxDecoration(
                   color: JustChatApp.teal.withAlpha(20),
-                  borderRadius: BorderRadius.zero,
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Icon(Icons.paste_rounded, color: JustChatApp.teal),
               ),
@@ -830,7 +830,7 @@ class _HomePageState extends State<HomePage> {
                 width: 40, height: 40,
                 decoration: BoxDecoration(
                   color: JustChatApp.teal.withAlpha(20),
-                  borderRadius: BorderRadius.zero,
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Icon(Icons.person_add_rounded, color: JustChatApp.teal),
               ),
