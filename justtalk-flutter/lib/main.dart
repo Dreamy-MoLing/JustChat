@@ -80,7 +80,7 @@ class JustChatApp extends StatelessWidget {
 
   // Complementary colors (amber/warm for emphasis)
   static const Color amber = Color(0xFFF59E0B);
-  static const Color warmYellow = Color(0xFFFDE68A);
+  static const Color warmYellow = creamDark; // alias for semantic clarity
 
   @override
   Widget build(BuildContext context) {
@@ -151,7 +151,7 @@ class JustChatApp extends StatelessWidget {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: Color(0x800D9488)),
+            borderSide: BorderSide(color: teal.withAlpha(128)),
           ),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
