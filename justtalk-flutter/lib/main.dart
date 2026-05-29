@@ -5,7 +5,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'models/chat_state.dart';
 import 'models/notification_state.dart';
+import 'pages/circle_page.dart';
 import 'pages/home_page.dart';
+import 'pages/profile_page.dart';
 import 'pages/welcome_page.dart';
 
 void main() async {
@@ -62,6 +64,155 @@ void _handleLink(Uri uri, ChatState chatState) {
     if (code != null && (code.startsWith('JTC1:') || code.startsWith('JTC2:'))) {
       chatState.handleConnectionCode(code);
     }
+  }
+}
+
+class MainShell extends StatefulWidget {
+  const MainShell({super.key});
+
+  @override
+  State<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends State<MainShell> {
+  int _currentIndex = 1; // Default to 聊天 tab
+
+  final List<Widget> _pages = const [
+    CirclePage(),
+    HomePage(),
+    ProfilePage(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages,
+      ),
+      bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+
+  Widget _buildBottomNav() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: JustChatApp.teal.withAlpha(15),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildNavItem(0, Icons.circle_outlined, '圈子'),
+              _buildChatItem(1),
+              _buildNavItem(2, Icons.menu, '个人'),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem(int index, IconData icon, String label) {
+    final isSelected = _currentIndex == index;
+    return GestureDetector(
+      onTap: () => setState(() => _currentIndex = index),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: isSelected ? 48 : 32,
+              height: isSelected ? 48 : 32,
+              decoration: BoxDecoration(
+                color: isSelected ? JustChatApp.teal : Colors.transparent,
+                borderRadius: BorderRadius.circular(isSelected ? 16 : 8),
+                boxShadow: isSelected
+                    ? [BoxShadow(
+                        color: JustChatApp.teal.withAlpha(76),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      )]
+                    : null,
+              ),
+              child: Icon(
+                icon,
+                color: isSelected ? Colors.white : const Color(0xFF64748B),
+                size: isSelected ? 24 : 22,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                color: isSelected ? JustChatApp.teal : const Color(0xFF64748B),
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatItem(int index) {
+    final isSelected = _currentIndex == index;
+    return GestureDetector(
+      onTap: () => setState(() => _currentIndex = index),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: isSelected ? 52 : 32,
+              height: isSelected ? 52 : 32,
+              margin: EdgeInsets.only(top: isSelected ? 0 : 8),
+              decoration: BoxDecoration(
+                color: isSelected ? JustChatApp.teal : Colors.transparent,
+                borderRadius: BorderRadius.circular(isSelected ? 18 : 8),
+                boxShadow: isSelected
+                    ? [BoxShadow(
+                        color: JustChatApp.teal.withAlpha(76),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
+                      )]
+                    : null,
+              ),
+              child: Icon(
+                Icons.chat_bubble_outline,
+                color: isSelected ? Colors.white : const Color(0xFF64748B),
+                size: isSelected ? 24 : 22,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '聊天',
+              style: TextStyle(
+                fontSize: 11,
+                color: isSelected ? JustChatApp.teal : const Color(0xFF64748B),
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -175,7 +326,7 @@ class JustChatApp extends StatelessWidget {
       ),
       home: Consumer<ChatState>(
         builder: (context, state, _) =>
-            state.isFirstLaunch ? const WelcomePage() : const HomePage(),
+            state.isFirstLaunch ? const WelcomePage() : const MainShell(),
       ),
     );
   }
