@@ -56,7 +56,7 @@ class _QrScannerPageState extends State<QrScannerPage> {
               height: 250,
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.white, width: 2),
-                borderRadius: BorderRadius.zero,
+                borderRadius: BorderRadius.circular(16),
               ),
               child: const Column(
                 mainAxisAlignment: MainAxisAlignment.center,

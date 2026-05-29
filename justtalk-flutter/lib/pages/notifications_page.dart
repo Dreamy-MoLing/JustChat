@@ -58,7 +58,7 @@ class NotificationsPage extends StatelessWidget {
                     color: n.isRead
                         ? JustChatApp.cream
                         : JustChatApp.teal.withAlpha(40),
-                    borderRadius: BorderRadius.zero,
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(_iconFor(n.type),
                       size: 22,

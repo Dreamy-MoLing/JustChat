@@ -39,7 +39,10 @@ class AnswerQrPage extends StatelessWidget {
               const SizedBox(height: 32),
               Container(
                 padding: const EdgeInsets.all(16),
-                color: Colors.white,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 child: QrImageView(
                   data: answerCode,
                   size: 240,
