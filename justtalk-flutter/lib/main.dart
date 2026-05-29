@@ -74,6 +74,14 @@ class JustChatApp extends StatelessWidget {
   static const Color creamDark = Color(0xFFFDE68A);
   static const Color surfaceLight = Color(0xFFF0FDFA);
 
+  // Analogous colors (blue→teal→green)
+  static const Color blue = Color(0xFF3B82F6);
+  static const Color green = Color(0xFF10B981);
+
+  // Complementary colors (amber/warm for emphasis)
+  static const Color amber = Color(0xFFF59E0B);
+  static const Color warmYellow = Color(0xFFFDE68A);
+
   @override
   Widget build(BuildContext context) {
     final textTheme = GoogleFonts.notoSansTextTheme(
@@ -108,15 +116,15 @@ class JustChatApp extends StatelessWidget {
             color: Colors.white,
           ),
           shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.zero,
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
           ),
         ),
         cardTheme: CardThemeData(
           color: Colors.white,
           elevation: 2,
-          shadowColor: teal.withAlpha(40),
+          shadowColor: teal.withAlpha(15),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.zero,
+            borderRadius: BorderRadius.circular(16),
           ),
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         ),
@@ -125,7 +133,7 @@ class JustChatApp extends StatelessWidget {
           foregroundColor: Colors.white,
           elevation: 4,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.zero,
+            borderRadius: BorderRadius.circular(18),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
@@ -134,16 +142,16 @@ class JustChatApp extends StatelessWidget {
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.zero,
+            borderRadius: BorderRadius.circular(14),
             borderSide: BorderSide.none,
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.zero,
-            borderSide: BorderSide(color: teal.withAlpha(50)),
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide.none,
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.zero,
-            borderSide: const BorderSide(color: teal, width: 2),
+            borderRadius: BorderRadius.circular(14),
+            borderSide: const BorderSide(color: Color(0x800D9488)),
           ),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
@@ -154,14 +162,14 @@ class JustChatApp extends StatelessWidget {
             padding:
                 const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.zero,
+              borderRadius: BorderRadius.circular(16),
             ),
           ),
         ),
         drawerTheme: DrawerThemeData(
           backgroundColor: Colors.white,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
         ),
       ),
