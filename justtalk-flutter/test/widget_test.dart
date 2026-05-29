@@ -20,6 +20,10 @@ void main() {
       ),
     );
     // 首次启动显示 WelcomePage
+    await tester.pump(); // 触发 initState
+    // 动画阶段：等待完成进入引导步骤页
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
     expect(find.text('欢迎使用 JustChat'), findsOneWidget);
   });
 }
