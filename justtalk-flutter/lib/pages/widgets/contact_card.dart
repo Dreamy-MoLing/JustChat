@@ -21,7 +21,7 @@ class ContactCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: InkWell(
-        borderRadius: BorderRadius.zero,
+        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(12),
@@ -32,7 +32,7 @@ class ContactCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                       colors: [JustChatApp.teal, JustChatApp.tealLight]),
-                  borderRadius: BorderRadius.zero,
+                  borderRadius: BorderRadius.circular(14),
                 ),
                 child: Stack(
                   children: [
