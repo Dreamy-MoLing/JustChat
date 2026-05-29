@@ -249,15 +249,6 @@ cd justtalk-flutter && flutter run # 终端 2：Flutter 应用
 
 ---
 
-## 相关文档
-
-- [ARCHITECTURE.md](ARCHITECTURE.md) — 完整架构图、数据流、状态模型
-- [AGENTS.md](AGENTS.md) — AI 代理行为边界
-- [CODING_CONVENTIONS.md](CODING_CONVENTIONS.md) — 编码规范
-- [plan.md](plan.md) — 版本路线图、任务分解
-
----
-
 ## 许可证
 
 [MIT License](LICENSE)
