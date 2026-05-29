@@ -98,7 +98,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows (release)
-        run: flutter build windows --release
+        run: flutter build windows --release --verbose
 
       - name: Package installer
         run: |
