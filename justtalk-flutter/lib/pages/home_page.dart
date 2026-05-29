@@ -1,8 +1,6 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import '../main.dart';
 import '../models/chat_state.dart';
@@ -12,7 +10,6 @@ import 'notifications_page.dart';
 import 'qr_scanner_page.dart';
 import 'answer_qr_page.dart';
 import 'widgets/contact_card.dart';
-import 'widgets/qr_countdown.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -84,202 +81,6 @@ class _HomePageState extends State<HomePage> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  // ══════════════════════════════════════════════════════════════════════
-  // QR code display (my QR code → others scan me)
-  // ══════════════════════════════════════════════════════════════════════
-
-  void _showMyQrCode() async {
-    final state = context.read<ChatState>();
-
-    // 惰性预连接：信令未连时先连接再展示 QR
-    if (!state.signalingConnected) {
-      // 弹 loading dialog
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
-      );
-      try {
-        await state.connectToSignaling().timeout(
-          const Duration(seconds: 3),
-        );
-      } on TimeoutException {
-        if (mounted) {
-          Navigator.pop(context); // 关 loading
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('信令服务器连接超时，请检查网络后重试')),
-          );
-        }
-        return;
-      } catch (_) {
-        if (mounted) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('信令服务器连接失败')),
-          );
-        }
-        return;
-      }
-      if (!state.signalingConnected) {
-        if (mounted) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('信令服务器连接失败')),
-          );
-        }
-        return;
-      }
-      if (mounted) Navigator.pop(context); // 关 loading
-    }
-
-    final pairingCode = await state.generatePairingCode();
-    if (!mounted) return;
-    final qrData = pairingCode.encode();
-    String? code = qrData;
-    bool paired = false;
-
-    // ── 设置配对回调：被扫码方感知有人扫码 ──
-    state.onPairedFromQr = (peerId, displayName) {
-      if (paired) return;
-      paired = true;
-      Navigator.pop(context); // 关闭 QR 弹窗
-      // 提示用户
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$displayName 正在连接...'),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-      // 导航到聊天页
-      final width = MediaQuery.of(context).size.width;
-      if (width < 600) {
-        Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const ChatPage()));
-      }
-    };
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, dialogSetState) {
-          return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: Row(
-              children: [
-                const Text('我的二维码'),
-                const Spacer(),
-                // ── 5 分钟倒计时 ──
-                QrCountdown(createdAt: pairingCode.createdAt),
-              ],
-            ),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('让对方扫码连接我', style: TextStyle(fontSize: 14)),
-                  const SizedBox(height: 8),
-                  Card(
-                    color: JustChatApp.cream.withAlpha(80),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.person, size: 16, color: JustChatApp.teal.withAlpha(150)),
-                          const SizedBox(width: 6),
-                          Text(
-                            '扫码后将以「${state.displayName}」身份连接',
-                            style: const TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Card(
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: QrImageView(
-                        data: code,
-                        version: QrVersions.auto,
-                        size: 200,
-                        eyeStyle: const QrEyeStyle(
-                          eyeShape: QrEyeShape.square,
-                          color: JustChatApp.teal,
-                        ),
-                        dataModuleStyle: const QrDataModuleStyle(
-                          dataModuleShape: QrDataModuleShape.square,
-                          color: JustChatApp.teal,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            Clipboard.setData(ClipboardData(text: code));
-                            ScaffoldMessenger.of(ctx).showSnackBar(
-                              const SnackBar(content: Text('连接码已复制')),
-                            );
-                          },
-                          icon: const Icon(Icons.copy, size: 16),
-                          label: const Text('复制'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => Share.share(code),
-                          icon: const Icon(Icons.share, size: 16),
-                          label: const Text('分享'),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  const Row(
-                    children: [
-                      Icon(Icons.check_circle, size: 14, color: Color(0xFF22C55E)),
-                      SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          '扫码立即添加好友。双方连接信令服务器后自动完成 P2P 连接。',
-                          style: TextStyle(fontSize: 11, color: Colors.grey),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  state.onPairedFromQr = null;
-                  Navigator.pop(ctx);
-                },
-                child: const Text('关闭'),
-              ),
-            ],
-          );
-        },
       ),
     );
   }
@@ -361,24 +162,6 @@ class _HomePageState extends State<HomePage> {
   // ══════════════════════════════════════════════════════════════════════
   // Show answer QR code (after scanning an offer)
   // ══════════════════════════════════════════════════════════════════════
-
-  // ══════════════════════════════════════════════════════════════════════
-  // Share connection code via system share
-  // ══════════════════════════════════════════════════════════════════════
-
-  Future<void> _shareConnectionCode() async {
-    final state = context.read<ChatState>();
-    try {
-      final code = (await state.generatePairingCode()).encode();
-      if (!mounted) return;
-      await Share.share(code);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('生成连接码失败: $e')),
-      );
-    }
-  }
 
   // ══════════════════════════════════════════════════════════════════════
   // Paste connection code / answer code (backup)
