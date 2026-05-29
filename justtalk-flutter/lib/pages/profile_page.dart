@@ -58,7 +58,7 @@ class ProfilePage extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'ID: ${chatState.myPeerId.length > 12 ? chatState.myPeerId.substring(0, 12) : chatState.myPeerId}...',
+                          'ID: ${chatState.myPeerId.length > 15 ? '${chatState.myPeerId.substring(0, 12)}...' : chatState.myPeerId}',
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Colors.grey,
                           ),
