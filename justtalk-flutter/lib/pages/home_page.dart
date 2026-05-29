@@ -8,10 +8,8 @@ import '../main.dart';
 import '../models/chat_state.dart';
 import '../models/notification_state.dart';
 import 'chat_page.dart';
-import 'info_page.dart';
 import 'notifications_page.dart';
 import 'qr_scanner_page.dart';
-import 'settings_page.dart';
 import 'answer_qr_page.dart';
 import 'widgets/contact_card.dart';
 import 'widgets/qr_countdown.dart';
@@ -544,110 +542,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ══════════════════════════════════════════════════════════════════════
-  // Drawer
-  // ══════════════════════════════════════════════════════════════════════
-
-  Widget _buildDrawer(BuildContext context) {
-    final state = context.watch<ChatState>();
-    final mq = MediaQuery.of(context);
-
-    return Drawer(
-      width: mq.size.width * 0.78,
-      child: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.only(
-                top: mq.padding.top, left: 20, right: 20, bottom: 20),
-            decoration: const BoxDecoration(color: JustChatApp.teal),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                SizedBox(height: mq.padding.top > 0 ? 0 : 12),
-                Container(
-                  width: 48, height: 48,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withAlpha(50),
-                    borderRadius: BorderRadius.zero,
-                  ),
-                  child: const Icon(Icons.chat_rounded, color: Colors.white, size: 28),
-                ),
-                const SizedBox(height: 12),
-                const Text('JustChat',
-                    style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                Text(state.displayName,
-                    style: TextStyle(color: Colors.white.withAlpha(200), fontSize: 13)),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                _sectionHeader('信息'),
-                ListTile(
-                  leading: const Icon(Icons.person, color: JustChatApp.teal),
-                  title: Text(state.displayName, style: const TextStyle(fontSize: 14)),
-                  subtitle: const Text('点击设置可修改昵称', style: TextStyle(fontSize: 11)),
-                ),
-                if (state.lastError != null) ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      state.lastError!,
-                      style: const TextStyle(color: Colors.red, fontSize: 11),
-                    ),
-                  ),
-                ],
-                const Divider(),
-                _sectionHeader('设置'),
-                ListTile(
-                  leading: const Icon(Icons.settings_rounded, color: JustChatApp.teal),
-                  title: const Text('偏好设置', style: TextStyle(fontSize: 14)),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => const SettingsPage()));
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.info_outline_rounded, color: JustChatApp.teal),
-                  title: const Text('使用教程', style: TextStyle(fontSize: 14)),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => const InfoPage()));
-                  },
-                ),
-                const Divider(),
-                const ListTile(
-                  leading: Icon(Icons.code_rounded, color: JustChatApp.teal),
-                  title: Text('关于 JustChat', style: TextStyle(fontSize: 14)),
-                  subtitle: Text('v0.0.4 · P2P 聊天', style: TextStyle(fontSize: 11)),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _sectionHeader(String title) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Text(title,
-          style: const TextStyle(
-              fontSize: 11, fontWeight: FontWeight.w700,
-              color: JustChatApp.teal, letterSpacing: 1.5)),
-    );
-  }
-
-  // ══════════════════════════════════════════════════════════════════════
   // Build
   // ══════════════════════════════════════════════════════════════════════
 
@@ -660,12 +554,6 @@ class _HomePageState extends State<HomePage> {
           ? null
           : AppBar(
               title: const Text('JustChat'),
-              leading: Builder(
-                builder: (ctx) => IconButton(
-                  icon: const Icon(Icons.menu_rounded),
-                  onPressed: () => Scaffold.of(ctx).openDrawer(),
-                ),
-              ),
               actions: [
                 Consumer<NotificationState>(
                   builder: (_, ns, __) => Stack(
@@ -696,7 +584,6 @@ class _HomePageState extends State<HomePage> {
                 const SizedBox(width: 4),
               ],
             ),
-      drawer: isDesktop ? null : _buildDrawer(context),
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth >= 600) {
@@ -730,25 +617,6 @@ class _HomePageState extends State<HomePage> {
               child: Scaffold(
                 appBar: AppBar(
                   title: const Text('联系人'),
-                  leading: PopupMenuButton<String>(
-                    icon: const Icon(Icons.menu_rounded),
-                    onSelected: (v) {
-                      switch (v) {
-                        case 'settings':
-                          Navigator.push(context,
-                              MaterialPageRoute(builder: (_) => const SettingsPage()));
-                          break;
-                        case 'info':
-                          Navigator.push(context,
-                              MaterialPageRoute(builder: (_) => const InfoPage()));
-                          break;
-                      }
-                    },
-                    itemBuilder: (ctx) => [
-                      const PopupMenuItem(value: 'settings', child: Text('设置')),
-                      const PopupMenuItem(value: 'info', child: Text('使用教程')),
-                    ],
-                  ),
                   actions: [
                     Consumer<NotificationState>(
                       builder: (_, ns, __) => Stack(
